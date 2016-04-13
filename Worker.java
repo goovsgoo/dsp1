@@ -2,8 +2,12 @@ package dsp1_v1;
 
 import java.util.List;
 import java.util.Properties;
+import java.util.Date;
+import java.util.ArrayList;
+
 import java.io.IOException;
- 
+import java.io.FileNotFoundException;
+
 import edu.stanford.nlp.ling.CoreAnnotations;
 import edu.stanford.nlp.ling.CoreAnnotations.NamedEntityTagAnnotation;
 import edu.stanford.nlp.ling.CoreAnnotations.SentencesAnnotation;
@@ -24,23 +28,85 @@ import org.jsoup.nodes.Document;
 
 public class Worker {
 
-	StanfordCoreNLP  sentimentPipeline = null;
-	StanfordCoreNLP  NERPipeline = null;
+	private static StanfordCoreNLP  sentimentPipeline = null;
+	private static StanfordCoreNLP  NERPipeline = null;
+	//private static AWS 				aws;
+    private static List<String> 	goodLinks;
+    private static List<String>		badLinks;
+	private static String 			workerId;
+	private static int 				workerJobsDone;
+	private static Date 			workerInitTime;
+	private static Date 			workerFinishTime;
+	private static long 			workerAverageWorkingTime;
+	private static long 			workerWorkingTime;
+	private static boolean 			isTerminate = false;
 	
-	public Worker(){
-		//*Sentiment Analysis*//
-		Properties propsSentiment = new Properties();
-		propsSentiment.put("annotators", "tokenize, ssplit, parse, sentiment");
-		sentimentPipeline =  new StanfordCoreNLP(propsSentiment);
-		
-		//*Named Entity Recognition*//
-		Properties propsRecognition = new Properties();
-		propsRecognition.put("annotators", "tokenize , ssplit, pos, lemma, ner");
-		NERPipeline =  new StanfordCoreNLP(propsRecognition);
-		
+	
+	public Worker(){	
 	}
 	
-	public int findSentiment(String tweet) {
+	private static void workerInit() throws FileNotFoundException, IOException{
+		
+	  //*for stat*//
+			workerInitTime = new Date(System.currentTimeMillis());
+			workerWorkingTime = 0;
+			//workerId = //awsHandler.getID();
+			workerJobsDone = 0;
+		
+	  //*aws*//
+			//aws = new //AWSHandler(Path, .....);constractor!	
+			goodLinks = new ArrayList<>();
+			badLinks  = new ArrayList<>();
+		   
+	}
+	private static void analysisInit() {
+ 
+	      //*Sentiment Analysis*//
+	      		Properties propsSentiment = new Properties();
+	      		propsSentiment.put("annotators", "tokenize, ssplit, parse, sentiment");
+	      		sentimentPipeline =  new StanfordCoreNLP(propsSentiment);
+	      		
+	      //*Named Entity Recognition*//
+	      		Properties propsRecognition = new Properties();
+	      		propsRecognition.put("annotators", "tokenize , ssplit, pos, lemma, ner");
+	      		NERPipeline =  new StanfordCoreNLP(propsRecognition);
+			   
+		}
+	
+	private static String getTweetLinkFromManager()
+    {
+        String tweetLink = pullMsgFromQueue();
+        if (tweetLink != null) {
+            if (isTerminateMessage(tweetLink)) {
+                aws.workerTerminate();
+                return tweetLink;
+            } else {
+                return tweetLink;
+            }
+        }
+        return null;
+    }
+	
+    private static void analysis()
+    {
+        while (!isTerminate)
+        {
+            String tweetLink = getTweetLinkFromManager();
+            if (tweetLink != null)
+            {
+                if (isTerminateMessage(tweetLink))
+                {
+                	isTerminate = true;
+                }
+                else
+                {
+                    processTweetLink(tweetLink);
+                }
+            }
+        }
+    }
+	
+	private int findSentiment(String tweet) {
 		 
         int mainSentiment = 0;
         if (tweet != null && tweet.length() > 0) {
@@ -63,7 +129,7 @@ public class Worker {
 	}
 	
 	
-	public String findEntities(String tweet){
+	private String findEntities(String tweet){
         // create an empty Annotation just with the given text
         Annotation document = new Annotation(tweet);
  
@@ -93,7 +159,7 @@ public class Worker {
         return entities;
     }
 	
-	public String parsingTweetFromWeb(String tweetLink){
+	private String parsingTweetFromWeb(String tweetLink){
 		Document doc;
 	    try {
 	
@@ -116,10 +182,14 @@ public class Worker {
 	}
 	
 	
-	public static void main(String[] args) {
+	public static void main(String[] args) throws IOException {
 		//String tweet = "Deep Fried Hamburger Helper Burger Recipe - HellthyJunkFood http://t.co/o2pyv9d4O2";
+		
 		Worker worker1 = new Worker();
-	
+		workerInit();
+		analysisInit();
+		analysis();
+		
 		String tweet = worker1.parsingTweetFromWeb("https://www.twitter.com/BarackObama/status/710517154987122689");
 		
 		int mainSenti=worker1.findSentiment(tweet);
