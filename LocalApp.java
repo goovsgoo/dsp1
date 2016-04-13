@@ -13,24 +13,22 @@ import com.amazonaws.services.ec2.AmazonEC2Client;
 import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.ec2.model.InstanceType;
 import com.amazonaws.services.ec2.model.RunInstancesRequest;
-
 import dsp1_v1.AWSHandler.QueueType;
 
 public class LocalApp {
 	
 	private AmazonEC2 ec2;
 	
-	public LocalApp(String path) {							
+	public LocalApp(String path) throws Exception {
+		System.out.print("Starting...");		
+		init();  
+		System.out.print("Init completed");
+		
 		try {
-			System.out.print("Starting...");
-			init();  
-			System.out.print("Init completed");
-			
-			RunInstancesRequest request = new RunInstancesRequest("ami-08111162", 1, 1);
+			RunInstancesRequest request = new RunInstancesRequest("ami-08728661", 1, 1);
             request.setInstanceType(InstanceType.T2Micro.toString());
             List<Instance> instances = ec2.runInstances(request).getReservation().getInstances();
             System.out.println("Launch instances: " + instances);
-                        
 		}
 		catch (AmazonServiceException ase) {
             System.out.println("Caught Exception: " + ase.getMessage());
@@ -41,7 +39,7 @@ public class LocalApp {
         	
 			// TODO Auto-generated catch block
 			e.printStackTrace();
-		}
+		}        
 	}
 	
     private void init() throws Exception {
@@ -71,7 +69,12 @@ public class LocalApp {
 	 */
 	public static void main(String[] args) {
 		String path = args[0];
-		LocalApp la = new LocalApp(path);
+		try {
+			LocalApp la = new LocalApp(path);
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 	}
 
 }
