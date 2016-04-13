@@ -116,34 +116,34 @@ public class Worker {
 	}
 	
 	
-	public static void main(String[] args) {
-		//String tweet = "Deep Fried Hamburger Helper Burger Recipe - HellthyJunkFood http://t.co/o2pyv9d4O2";
-		Worker worker1 = new Worker();
-	
-		String tweet = worker1.parsingTweetFromWeb("https://www.twitter.com/BarackObama/status/710517154987122689");
-		
-		int mainSenti=worker1.findSentiment(tweet);
-
-		//find Color
-		String color = "black";
-		switch (mainSenti) {
-	        case 0:  color = "dark red";
-	        		 break;
-	        case 1:  color = "red";
-	                 break;
-	        case 2:  color = "black";
-	                 break;
-	        case 3:  color = "light green";
-	                 break;
-	        case 4:  color = "dark green";
-	                 break;
-		}
-		
-		String Entities = worker1.findEntities(tweet);
-		
-		String htmlTag = "<p><b><font color= \"" + color + "\">" + tweet + "</font></b>" + Entities + "</p>";	
-		System.out.println(htmlTag);
-		
-	}
+//	public static void main(String[] args) {
+//		//String tweet = "Deep Fried Hamburger Helper Burger Recipe - HellthyJunkFood http://t.co/o2pyv9d4O2";
+//		Worker worker1 = new Worker();
+//	
+//		String tweet = worker1.parsingTweetFromWeb("https://www.twitter.com/BarackObama/status/710517154987122689");
+//		
+//		int mainSenti=worker1.findSentiment(tweet);
+//
+//		//find Color
+//		String color = "black";
+//		switch (mainSenti) {
+//	        case 0:  color = "dark red";
+//	        		 break;
+//	        case 1:  color = "red";
+//	                 break;
+//	        case 2:  color = "black";
+//	                 break;
+//	        case 3:  color = "light green";
+//	                 break;
+//	        case 4:  color = "dark green";
+//	                 break;
+//		}
+//		
+//		String Entities = worker1.findEntities(tweet);
+//		
+//		String htmlTag = "<p><b><font color= \"" + color + "\">" + tweet + "</font></b>" + Entities + "</p>";	
+//		System.out.println(htmlTag);
+//		
+//	}
 
 }
