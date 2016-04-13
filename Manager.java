@@ -40,6 +40,4 @@ public class Manager {
         awsPort.setQueueVisibility(toWorkersQueue, 180);
     }
 	
-	
-	
 }
