@@ -7,6 +7,8 @@ import java.util.ArrayList;
 
 import java.io.IOException;
 import java.io.FileNotFoundException;
+import java.io.File;
+import java.io.PrintWriter;
 
 import edu.stanford.nlp.ling.CoreAnnotations;
 import edu.stanford.nlp.ling.CoreAnnotations.NamedEntityTagAnnotation;
@@ -24,32 +26,42 @@ import edu.stanford.nlp.util.CoreMap;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 
+import dsp1_v1.AWSHandler.QueueType;
+
 
 
 public class Worker {
 
-	private static StanfordCoreNLP  sentimentPipeline = null;
-	private static StanfordCoreNLP  NERPipeline = null;
-	//private static AWS 				aws;
-    private static List<String> 	goodLinks;
-    private static List<String>		badLinks;
-	private static String 			workerId;
-	private static int 				workerJobsDone;
-	private static Date 			workerInitTime;
-	private static Date 			workerFinishTime;
-	private static long 			workerAverageWorkingTime;
-	private static long 			workerWorkingTime;
-	private static boolean 			isTerminate = false;
+	private  StanfordCoreNLP  sentimentPipeline = null;
+	private  StanfordCoreNLP  NERPipeline = null;
+	private  AWSHandler		aws;
+    private  List<String> 	goodLinks;
+    private  List<String>		badLinks;
+	private  String 			workerId;
+	private  int 				workerJobsDone;
+	private  Date 			workerInitTime;
+	private  Date 			workerFinishTime;
+	private  long 			workerAverageTime;
+	private  long 			workerWorkTime;
+	private  boolean 			isTerminate = false;
 	
-	
+	 
 	public Worker(){	
+		
+		try {
+			workerInit();
+		} catch (IOException e) {
+			System.out.println("::Worker:: got exception " + e.getMessage());
+		}
+		analysisInit();
+		
 	}
 	
-	private static void workerInit() throws FileNotFoundException, IOException{
+	private void workerInit() throws FileNotFoundException, IOException{
 		
 	  //*for stat*//
 			workerInitTime = new Date(System.currentTimeMillis());
-			workerWorkingTime = 0;
+			workerWorkTime = 0;
 			//workerId = //awsHandler.getID();
 			workerJobsDone = 0;
 		
@@ -59,7 +71,7 @@ public class Worker {
 			badLinks  = new ArrayList<>();
 		   
 	}
-	private static void analysisInit() {
+	private void analysisInit() {
  
 	      //*Sentiment Analysis*//
 	      		Properties propsSentiment = new Properties();
@@ -70,24 +82,21 @@ public class Worker {
 	      		Properties propsRecognition = new Properties();
 	      		propsRecognition.put("annotators", "tokenize , ssplit, pos, lemma, ner");
 	      		NERPipeline =  new StanfordCoreNLP(propsRecognition);
-			   
 		}
 	
-	private static String getTweetLinkFromManager()
+	private String getTweetLinkFromManager()
     {
-        String tweetLink = pullMsgFromQueue();
+        String tweetLink = aws.pullMessageFromSQS(QueueType.ManagerToWorker);
         if (tweetLink != null) {
             if (isTerminateMessage(tweetLink)) {
                 aws.workerTerminate();
+            } 
                 return tweetLink;
-            } else {
-                return tweetLink;
-            }
         }
         return null;
     }
 	
-    private static void analysis()
+    private void analysis()
     {
         while (!isTerminate)
         {
@@ -105,7 +114,66 @@ public class Worker {
             }
         }
     }
+    
+    private void processTweetLink(String tweetLink)
+    {
+        long startTime  = 0;
+        long finishTime = 0;
+
+        //*stat*//
+        startTime = System.currentTimeMillis();
+        
+        try
+        {  
+        	//replace tweet ==>> tweetLink . whan end of work !!!!!!!!!!!!!!!!!!!!!
+            String tweet = parsingTweetFromWeb("https://www.twitter.com/BarackObama/status/710517154987122689");
+    		int mainSenti= findSentiment(tweet);
+
+    		//*find Color*//
+    		String color = "black";
+    		switch (mainSenti) {
+    	        case 0:  color = "dark red";
+    	        		 break;
+    	        case 1:  color = "red";
+    	                 break;
+    	        case 2:  color = "black";
+    	                 break;
+    	        case 3:  color = "light green";
+    	                 break;
+    	        case 4:  color = "dark green";
+    	                 break;
+    		}
+    		
+    		String Entities = findEntities(tweet);
+    		
+    		String htmlTag = "<p><b><font color= \"" + color + "\">" + tweet + "</font></b>" + Entities + "</p>";	
+    		//System.out.println(htmlTag);
+            
+    		finishTime = System.currentTimeMillis();
+    		workerWorkTime += finishTime - startTime;
+
+    		goodLinks.add("job number: " + workerJobsDone + " " + tweetLink);
+    		workerJobsDone++;
+            sendAnsToManager(tweetLink, htmlTag);
+        }
+        catch (Exception e)
+        {
+            System.out.println("*****Worker***** got exception " + e.getMessage());
+//            failedURLs.add("job number:" +workerJobsDone + ". " + tweetLink +" "+e);
+//            workerJobsDone++;
+//            finishTime = System.currentTimeMillis();
+//            workerWorkTime += finishTime - startTime;
+//            sendAnsToManager( tweetLink, "Failed");
+//            aws.deleteMessageFromQueue();
+        }
+    }
 	
+    
+    private void sendAnsToManager(String tweetLink,String htmlTag)
+    {
+        aws.pushMessageToSQS(htmlTag, QueueType.WorkerToManager);
+    }
+    
 	private int findSentiment(String tweet) {
 		 
         int mainSentiment = 0;
@@ -181,37 +249,69 @@ public class Worker {
 	    }
 	}
 	
-	public static void main(String[] args) throws IOException {
-		//String tweet = "Deep Fried Hamburger Helper Burger Recipe - HellthyJunkFood http://t.co/o2pyv9d4O2";
-		
-		Worker worker1 = new Worker();
-		workerInit();
-		analysisInit();
-		analysis();
-		
-		String tweet = worker1.parsingTweetFromWeb("https://www.twitter.com/BarackObama/status/710517154987122689");
-		
-		int mainSenti=worker1.findSentiment(tweet);
+	private void sendStat()
+    {
+        File file = createStatFile();
+        
+        if (file != null){
+            aws.uploadFileToS3(file);
+        }
+    }
 
-		//find Color
-		String color = "black";
-		switch (mainSenti) {
-	        case 0:  color = "dark red";
-	        		 break;
-	        case 1:  color = "red";
-	                 break;
-	        case 2:  color = "black";
-	                 break;
-	        case 3:  color = "light green";
-	                 break;
-	        case 4:  color = "dark green";
-	                 break;
-		}
+    private File createStatFile()
+    {
+    	workerFinishTime = new Date(System.currentTimeMillis());
+
+        File file = new File ("Statistics_" + workerId + ".txt");
+        PrintWriter writer;
+        try
+        {
+            writer = new PrintWriter (file);
+            writer.println("Worker ID: " + workerId);
+            writer.println("Start time:Finish time = " + workerInitTime + ":" + workerFinishTime);
+            if (workerJobsDone != 0)
+            {
+                workerAverageTime = workerWorkTime / workerJobsDone;
+                writer.println("Average Working Time: " + workerAverageTime +" [ms]");
+            }
+            else
+            {
+                writer.println("Average Working Time: 0" +" [ms]");
+            }
+            writer.println("Number of jobs handled: " + workerJobsDone);
+            writer.println("Number of success URLs: " + goodLinks.size());
+            writer.println("Number of failed URLs: " + badLinks.size());
+            writer.println("Successful URLs:");
+            for (String link  : goodLinks)
+            {
+                writer.println(link);
+            }
+            writer.println("");
+            writer.println("Failed URLs:");
+            for (String link  : badLinks)
+            {
+                writer.println(link);
+            }
+            writer.close();
+            return file;
+        }
+        catch (Exception e)
+        {
+            System.out.println("::Worker:: statistics file FAILED : "+e.getMessage());
+
+        }
+        return null;
+    }
+	
+	
+	
+	public static void main(String[] args) throws IOException {
 		
-		String Entities = worker1.findEntities(tweet);
 		
-		String htmlTag = "<p><b><font color= \"" + color + "\">" + tweet + "</font></b>" + Entities + "</p>";	
-		System.out.println(htmlTag);
+		Worker worker = new Worker();
 		
+		worker.analysis();
+		worker.sendStat();
+		worker.goTerminate();
 	}
 }
