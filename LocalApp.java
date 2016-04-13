@@ -25,7 +25,8 @@ public class LocalApp {
 		System.out.print("Init completed");
 		
 		try {
-			RunInstancesRequest request = new RunInstancesRequest("ami-08728661", 1, 1);
+
+			RunInstancesRequest request = new RunInstancesRequest("ami-08111162", 1, 1);
             request.setInstanceType(InstanceType.T2Micro.toString());
             List<Instance> instances = ec2.runInstances(request).getReservation().getInstances();
             System.out.println("Launch instances: " + instances);
@@ -70,7 +71,9 @@ public class LocalApp {
 	public static void main(String[] args) {
 		String path = args[0];
 		try {
-			LocalApp la = new LocalApp(path);
+			//LocalApp la = new LocalApp(path);
+			AWSHandler handler = new AWSHandler();
+			handler.startManagerNode();
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();

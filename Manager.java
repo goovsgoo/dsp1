@@ -20,10 +20,6 @@ public class Manager {
 
 	} 
 	
-	public Manager(){
-	}
-	
-	
 	//get new Queues 1.ManagerLocalQueue 2.LocalManagerQueue
 	private void initQueues() throws AmazonServiceException{
 		
