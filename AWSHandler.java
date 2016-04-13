@@ -119,6 +119,7 @@ public class AWSHandler {
 	    ec2 = new AmazonEC2Client(credentials);
 	    Region usEast1 = Region.getRegion(Regions.US_EAST_1);
 	    ec2.setRegion(usEast1);
+	    ec2.setRegion(usEast1);
 	    
 	    sqs = new AmazonSQSClient(credentials);
 	    sqs.setRegion(usEast1);	    

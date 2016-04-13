@@ -1,39 +1,51 @@
 package dsp1_v1;
 
-import com.amazonaws.AmazonServiceException;
-
-
+import dsp1_v1.AWSHandler.QueueType;
 
 public class Manager {
 
-	private static AWSPort awsPort;
-	
-	private String mTLQueue;
-    private String lTMQueue;
-    private String mTWQueue;
-    private String wTMQueue;
-	
-	
+	private AWSHandler 	aws;
+	private  boolean	isTerminate = false; 
 	
 	public static void main(String[] args) {
-		// TODO Auto-generated method stub
-
+		Manager manager = new Manager();
+		try{
+			manager.initManager();
+		} catch (Exception e) {
+			System.out.println("::MANAGER:: Exception to init AWSHandler");
+			 manager.terminateManager();
+		}
+		while (!manager.isTerminate) {
+            manager.getMessageFromLocal();
+        }
+        manager.terminateManager();
+	
+		
 	} 
 	
-	//get new Queues 1.ManagerLocalQueue 2.LocalManagerQueue
-	private void initQueues() throws AmazonServiceException{
-		
-		
-        System.out.println("::MANAGER:: init queues ManagerLocalQueue & LocalManagerQueue");
-        
-        mTLQueue = awsPort.createSQS("MTLQueue");
-        lTMQueue = awsPort.createSQS("LTMQueue");
-        mTWQueue = awsPort.createSQS("MTWQueue");
-        wTMQueue = awsPort.createSQS("WTMQueue");
-        
-        
-        awsPort.setQueueVisibility(fromWorkersQueue, 180);
-        awsPort.setQueueVisibility(toWorkersQueue, 180);
-    }
+	 private void getMessageFromLocal() {
+		 System.out.println("::MANAGER:: Get file from local");
+
+	        String message = aws.pullMessageFromSQS(QueueType.LocalToManager);
+	        if(message == null){
+	            return;
+	        }
+	        if (isTerminateMessage(message)) {
+	            System.out.println("::MANAGER:: Got [Terminate] message from local");
+	            isTerminate = true;
+	            return;
+	        }
+	        //File file = aws.downloadFileFromS3(message);
+	        ////??????????????????????????????????????????????????????????????????????????????????????????????????????????
+	        /// how we do the parse?? if the Massage is only in the AWSHandler?
+	        // String inputFileName = 
+	       //  String localID = 
+	        // int urlsPerWorker =   		
+	}
+
+	private void initManager() throws Exception  {
+	        System.out.println("::MANAGER::  Start initialization of manager");
+				aws = new AWSHandler();
+	    }
 	
 }

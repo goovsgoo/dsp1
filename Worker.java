@@ -34,16 +34,16 @@ public class Worker {
 
 	private  StanfordCoreNLP  sentimentPipeline = null;
 	private  StanfordCoreNLP  NERPipeline = null;
-	private  AWSHandler		aws;
-    private  List<String> 	goodLinks;
-    private  List<String>		badLinks;
-	private  String 			workerId;
-	private  int 				workerJobsDone;
-	private  Date 			workerInitTime;
-	private  Date 			workerFinishTime;
-	private  long 			workerAverageTime;
-	private  long 			workerWorkTime;
-	private  boolean 			isTerminate = false;
+	private  AWSHandler		  aws;
+    private  List<String> 	  goodLinks;
+    private  List<String>	  badLinks;
+	private  String 		  workerId;
+	private  int 			  workerJobsDone;
+	private  Date 			  workerInitTime;
+	private  Date 			  workerFinishTime;
+	private  long 			  workerAverageTime;
+	private  long 			  workerWorkTime;
+	private  boolean 		  isTerminate = false;
 	
 	 
 	public Worker(){	
