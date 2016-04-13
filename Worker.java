@@ -181,7 +181,6 @@ public class Worker {
 	    }
 	}
 	
-	
 	public static void main(String[] args) throws IOException {
 		//String tweet = "Deep Fried Hamburger Helper Burger Recipe - HellthyJunkFood http://t.co/o2pyv9d4O2";
 		
@@ -215,5 +214,4 @@ public class Worker {
 		System.out.println(htmlTag);
 		
 	}
-
 }
