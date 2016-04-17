@@ -92,6 +92,7 @@ public class AWSHandler {
 	}
 	
 	public Message pullMessageFromSQS(QueueType type) {
+		System.out.println("*****AWS***** got " + type);
 		return sqs.receiveMessage(sqsURLs.get(type)).getMessages().get(0);
 	}
 	

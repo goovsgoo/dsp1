@@ -62,7 +62,7 @@ public class Worker {
 		
 	  //*aws*//
 			try {
-				//aws = new AWSHandler();
+				aws = new AWSHandler();
 			} catch (Exception e) {
 				System.out.println("*****Worker***** got exception " + e.getMessage());
 			}
