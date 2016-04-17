@@ -53,16 +53,15 @@ public class Worker {
 	}
 	
 	private void workerInit() throws FileNotFoundException, IOException{
-		
 	  //*for stat*//
 			workerInitTime = new Date(System.currentTimeMillis());
 			workerWorkTime = 0;
-			//workerId = //awsHandler.getID();
+			workerId ="yoed";
 			workerJobsDone = 0;
 		
 	  //*aws*//
 			try {
-				//aws = new AWSHandler();
+				aws = new AWSHandler();
 			} catch (Exception e) {
 				System.out.println("*****Worker***** got exception " + e.getMessage());
 			}
@@ -70,6 +69,7 @@ public class Worker {
 			badLinks  = new ArrayList<>();
 		   
 	}
+	
 	private void analysisInit() {
  
 	      //*Sentiment Analysis*//
@@ -83,37 +83,32 @@ public class Worker {
 	      		NERPipeline =  new StanfordCoreNLP(propsRecognition);
 		}
 	
-	private Message getTweetLinkFromManager()
+	private Message getMessageFromManager()
     {
-		Message tweetLink = aws.pullMessageFromSQS(QueueType.ManagerToWorker);
-        if (tweetLink != null) {
-        	Map<String, MessageAttributeValue> LinkMap = tweetLink.getMessageAttributes();
- //           if (isTerminateMessage(LinkMap)) {
-//                aws.workerTerminate();
-               // return tweetLink;  ????????????
-           // } else
-        	if (LinkMap.containsKey("LocalID") && LinkMap.containsKey("URL")) {
-            	return tweetLink;
-            }       
+		Message message = aws.pullMessageFromSQS(QueueType.ManagerToWorker);
+        if (message != null) {
+        	Map<String, MessageAttributeValue> LinkMap = message.getMessageAttributes();
+            if (LinkMap.containsKey("Terminate")) { 
+            	isTerminate = true;
+            	System.out.println("*****Worker***** got Terminate Msg");
+            }     
         }
-        return null;
+        return null;						
     }
 	
 		
     private void analysis()
     {
-        while (!isTerminate)
+        while (true)
         {
-        	Message tweetLink = getTweetLinkFromManager();
+        	Message tweetLink = getMessageFromManager();
             if (tweetLink != null)
             {
-//                if (isTerminateMessage(tweetLink))
- //               {
-//                	isTerminate = true;
- //               }
-//                else  {
+                if (!isTerminate){
                     processTweetLink(tweetLink);
-               // }
+                } else {
+                	break;
+                }
             }
         }
     }
@@ -125,13 +120,10 @@ public class Worker {
 
         //*stat*//
         startTime = System.currentTimeMillis();
+        String url = tweetLink.getBody(); 
         
         try
-        {  
-        	//replace tweet ==>> tweetLink . whan end of work !!!!!!!!!!!!!!!!!!!!!
-           // String tweet = parsingTweetFromWeb("https://www.twitter.com/BarackObama/status/710517154987122689");
-        	
-        	String url = tweetLink.getMessageAttributes().get("URL").getStringValue();
+        {         	     
         	String tweet = parsingTweetFromWeb(url);
     		int mainSenti= findSentiment(tweet);
 
@@ -149,36 +141,36 @@ public class Worker {
     	        case 4:  color = "dark green";
     	                 break;
     		}
-    		
+
     		String Entities = findEntities(tweet);
-    		
+
     		String htmlTag = "<p><b><font color= \"" + color + "\">" + tweet + "</font></b>" + Entities + "</p>";	
-    		//System.out.println(htmlTag);
             
     		finishTime = System.currentTimeMillis();
+    		
     		workerWorkTime += finishTime - startTime;
 
     		goodLinks.add("job number: " + workerJobsDone + " " + url);
     		workerJobsDone++;
-            sendAnsToManager(url, htmlTag);
+            sendAnsToManager(tweetLink,url, htmlTag);
         }
         catch (Exception e)
         {
             System.out.println("*****Worker***** got exception " + e.getMessage());
-//            failedURLs.add("job number:" +workerJobsDone + ". " + tweetLink +" "+e);
-//            workerJobsDone++;
-//            finishTime = System.currentTimeMillis();
-//            workerWorkTime += finishTime - startTime;
-//            sendAnsToManager( tweetLink, "Failed");
-//            aws.deleteMessageFromQueue();
+            badLinks.add("job number:" +workerJobsDone + ". " + url +" "+e);
+            workerJobsDone++;
+            finishTime = System.currentTimeMillis();
+            workerWorkTime += finishTime - startTime;
+            sendAnsToManager( tweetLink, url, "Failed");
         }
     }
 	
     
-    private void sendAnsToManager(String url,String htmlTag)
+    private void sendAnsToManager(Message message, String url,String htmlTag)
     {
         aws.pushMessageToSQS(htmlTag, QueueType.WorkerToManager);
-     
+        System.out.println("*****Worker***** send to manager: " + htmlTag);
+        aws.deleteMessageFromSQS(message, QueueType.ManagerToWorker);
     }
     
 	private int findSentiment(String tweet) {
@@ -230,30 +222,30 @@ public class Worker {
                 }                
             }
         }
-        entities = "[" + entities.substring(1) + "]";
+        //System.out.println("::Worker:: entities: " + entities);
+        if( entities != null && !(entities.equals("")) ){
+        	entities = "[" + entities.substring(1) + "]";
+        }
         return entities;
     }
 	
 	private String parsingTweetFromWeb(String tweetLink){
 		Document doc;
 	    try {
-	
 	        // need http protocol
 	        doc = Jsoup.connect(tweetLink).get();
-	
-	        // get page title
-	        String title = doc.title();
-	        //remove double quote (")
-	        int startCite = title.indexOf('\"');
-	        int endCite = title.lastIndexOf('\"');	
-	        title=title.substring(startCite+1, endCite);
-	        //System.out.println(title);
-	        return title;
-	    
 	    } catch (IOException e) {
-	        e.printStackTrace();
+	    	System.out.println("::Worker:: Jsoup FAILED to get web: " + tweetLink);
 	        return null;
 	    }
+        // get page title
+        String title = doc.title();
+        //remove double quote (")
+        int startCite = title.indexOf('\"');
+        int endCite = title.lastIndexOf('\"');	
+        title=title.substring(startCite+1, endCite);
+        //System.out.println(title);
+        return title;
 	}
 	
 	private void sendStat()
@@ -261,7 +253,7 @@ public class Worker {
         File file = createStatFile();
         
         if (file != null){
-            aws.uploadFileToS3(file);
+        	aws.uploadFileToS3(file, workerId);
         }
     }
 
@@ -313,8 +305,6 @@ public class Worker {
 	
 	
 	public static void main(String[] args) throws IOException {
-		
-		
 		Worker worker = new Worker();
 		
 		try {
@@ -328,7 +318,10 @@ public class Worker {
 		System.out.println("*****Worker***** Init sec!");
 		
 		worker.analysis();
+		
+		System.out.println("*****Worker***** analysis sec!");
+		
 		worker.sendStat();
-		//worker.goTerminate();
+		System.out.println("*****Worker***** Goodbye " + worker.workerId);
 	}
 }
