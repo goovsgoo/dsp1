@@ -1,6 +1,7 @@
 package dsp1_v1;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Date;
 import java.util.ArrayList;
@@ -28,6 +29,8 @@ import org.jsoup.nodes.Document;
 
 import dsp1_v1.AWSHandler.QueueType;
 
+import com.amazonaws.services.sqs.model.Message;
+import com.amazonaws.services.sqs.model.MessageAttributeValue;
 
 
 public class Worker {
@@ -84,23 +87,27 @@ public class Worker {
 	      		NERPipeline =  new StanfordCoreNLP(propsRecognition);
 		}
 	
-	private String getTweetLinkFromManager()
+	private Message getTweetLinkFromManager()
     {
-        String tweetLink = aws.pullMessageFromSQS(QueueType.ManagerToWorker);
+		Message tweetLink = aws.pullMessageFromSQS(QueueType.ManagerToWorker);
         if (tweetLink != null) {
-            if (isTerminateMessage(tweetLink)) {
+        	Map<String, MessageAttributeValue> LinkMap = tweetLink.getMessageAttributes();
+            if (isTerminateMessage(LinkMap)) {
                 aws.workerTerminate();
-            } 
-                return tweetLink;
+               // return tweetLink;  ????????????
+            } else if (LinkMap.containsKey("LocalID") && LinkMap.containsKey("URL")) {
+            	return tweetLink;
+            }       
         }
         return null;
     }
 	
+		
     private void analysis()
     {
         while (!isTerminate)
         {
-            String tweetLink = getTweetLinkFromManager();
+        	Message tweetLink = getTweetLinkFromManager();
             if (tweetLink != null)
             {
                 if (isTerminateMessage(tweetLink))
@@ -115,7 +122,7 @@ public class Worker {
         }
     }
     
-    private void processTweetLink(String tweetLink)
+    private void processTweetLink(Message tweetLink)
     {
         long startTime  = 0;
         long finishTime = 0;
@@ -126,7 +133,10 @@ public class Worker {
         try
         {  
         	//replace tweet ==>> tweetLink . whan end of work !!!!!!!!!!!!!!!!!!!!!
-            String tweet = parsingTweetFromWeb("https://www.twitter.com/BarackObama/status/710517154987122689");
+           // String tweet = parsingTweetFromWeb("https://www.twitter.com/BarackObama/status/710517154987122689");
+        	
+        	String url = tweetLink.getMessageAttributes().get("URL").getStringValue();
+        	String tweet = parsingTweetFromWeb(url);
     		int mainSenti= findSentiment(tweet);
 
     		//*find Color*//
@@ -152,9 +162,9 @@ public class Worker {
     		finishTime = System.currentTimeMillis();
     		workerWorkTime += finishTime - startTime;
 
-    		goodLinks.add("job number: " + workerJobsDone + " " + tweetLink);
+    		goodLinks.add("job number: " + workerJobsDone + " " + url);
     		workerJobsDone++;
-            sendAnsToManager(tweetLink, htmlTag);
+            sendAnsToManager(url, htmlTag);
         }
         catch (Exception e)
         {
@@ -169,9 +179,10 @@ public class Worker {
     }
 	
     
-    private void sendAnsToManager(String tweetLink,String htmlTag)
+    private void sendAnsToManager(String url,String htmlTag)
     {
         aws.pushMessageToSQS(htmlTag, QueueType.WorkerToManager);
+     
     }
     
 	private int findSentiment(String tweet) {
