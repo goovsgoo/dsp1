@@ -1,10 +1,13 @@
 package dsp1_v1;
 
 import java.io.File;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import org.jsoup.helper.DescendableLinkedList;
 
 import com.amazonaws.AmazonClientException;
 import com.amazonaws.auth.AWSCredentials;
@@ -13,10 +16,17 @@ import com.amazonaws.regions.Region;
 import com.amazonaws.regions.Regions;
 import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.AmazonEC2Client;
+import com.amazonaws.services.ec2.model.DescribeInstanceStatusResult;
+import com.amazonaws.services.ec2.model.DescribeInstancesResult;
 import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.ec2.model.InstanceType;
 import com.amazonaws.services.ec2.model.RunInstancesRequest;
 import com.amazonaws.services.ec2.model.TerminateInstancesRequest;
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.AmazonS3Client;
+import com.amazonaws.services.s3.model.GetObjectRequest;
+import com.amazonaws.services.s3.model.PutObjectRequest;
+import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.sqs.AmazonSQS;
 import com.amazonaws.services.sqs.AmazonSQSClient;
 import com.amazonaws.services.sqs.model.CreateQueueRequest;
@@ -28,6 +38,7 @@ public class AWSHandler {
 
 	private AmazonEC2 ec2;
 	private AmazonSQS sqs;
+	private AmazonS3 s3;
 	private String credentialsID;
 	private Map<QueueType, String> sqsURLs;
 	
@@ -44,7 +55,8 @@ public class AWSHandler {
 	}
 
 	public boolean isManagerNodeActive() {
-		return false;
+		DescribeInstanceStatusResult r = ec2.describeInstanceStatus();
+		return r.getInstanceStatuses().size() > 0;
 	}
 	
 	public List<String> startWorkers(int numWorkers) {
@@ -62,11 +74,16 @@ public class AWSHandler {
 	}
 	
 	public void uploadFileToS3(File file) {
-		 
+		String fileName = file.getName().replace("\\", "_").replace("/", "_").replace(":", "_");
+		String bucketName = credentialsID.toLowerCase() + "mybucket";
+		s3.createBucket(bucketName);		
+		s3.putObject(new PutObjectRequest(bucketName, fileName, file));
 	}
 	
-	public File downloadFileFromS3() {
-		return null;
+	public InputStream downloadFileFromS3(String key) {
+		String bucketName = credentialsID.toLowerCase() + "mybucket";
+		S3Object object = s3.getObject(new GetObjectRequest(bucketName, key));
+		return object.getObjectContent();
 	}
 	
 	public void pushMessageToSQS(String msg, QueueType type) {
@@ -104,7 +121,7 @@ public class AWSHandler {
 	     * credential profile by reading from the credentials file located at
 	     * (C:\\Users\\Or\\.aws\\credentials).
 	     */
-	    AWSCredentials credentials = null;
+ 	    AWSCredentials credentials = null;
 	    try {
 	        credentials = new ProfileCredentialsProvider("default").getCredentials();
 	        credentialsID = credentials.getAWSAccessKeyId();
@@ -119,7 +136,9 @@ public class AWSHandler {
 	    ec2 = new AmazonEC2Client(credentials);
 	    Region usEast1 = Region.getRegion(Regions.US_EAST_1);
 	    ec2.setRegion(usEast1);
-	    ec2.setRegion(usEast1);
+	    
+	    s3 = new AmazonS3Client(credentials);
+	    s3.setRegion(usEast1);
 	    
 	    sqs = new AmazonSQSClient(credentials);
 	    sqs.setRegion(usEast1);	    
@@ -131,7 +150,5 @@ public class AWSHandler {
 	    sqsURLs.put(QueueType.LocalToManager, ltm);
 	    sqsURLs.put(QueueType.ManagerToWorker, mtw);
 	    sqsURLs.put(QueueType.WorkerToManager, wtm);	
-	    
-	    String a = pullMessageFromSQS(QueueType.ManagerToLocal);
 	}
 }
