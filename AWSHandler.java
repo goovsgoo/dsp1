@@ -6,6 +6,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.UUID;
 
 import org.jsoup.helper.DescendableLinkedList;
 
@@ -32,6 +34,8 @@ import com.amazonaws.services.sqs.AmazonSQSClient;
 import com.amazonaws.services.sqs.model.CreateQueueRequest;
 import com.amazonaws.services.sqs.model.Message;
 import com.amazonaws.services.sqs.model.ReceiveMessageRequest;
+import com.amazonaws.services.sqs.model.SendMessageBatchRequest;
+import com.amazonaws.services.sqs.model.SendMessageBatchRequestEntry;
 import com.amazonaws.services.sqs.model.SendMessageRequest;
 
 public class AWSHandler {
@@ -41,6 +45,7 @@ public class AWSHandler {
 	private AmazonS3 s3;
 	private String credentialsID;
 	private Map<QueueType, String> sqsURLs;
+	private final int MAX_RUNNING_WORKERS = 19; // AWS allows 20 instances total, and 1 of them is the Manager.
 	
 	public enum QueueType {
 		WorkerToManager,
@@ -71,10 +76,10 @@ public class AWSHandler {
 	 * @param numWorkers number of necessary workers for a job
 	 * @return list of instance Ids
 	 */
-	public List<String> startWorkers(int numWorkers) {
+	public List<String> startWorkers(int numWorkers) {		
 		DescribeInstanceStatusResult r = ec2.describeInstanceStatus();
-		int activeWorkers = r.getInstanceStatuses().size()-1; // the Manager is also an instance that should be ignored
-		int numWorkersToRun = Math.max(numWorkers - activeWorkers, 0);
+		int activeWorkers = Math.max(r.getInstanceStatuses().size()-1, 0); // the Manager is also an instance that should be ignored
+		int numWorkersToRun = Math.max(Math.min(numWorkers, MAX_RUNNING_WORKERS) - activeWorkers, 0);
 		List<Instance> workers = runInstances(numWorkersToRun, numWorkersToRun);
 		List<String> ids = new ArrayList<String>();
 		for (Instance i : workers) {
@@ -100,9 +105,32 @@ public class AWSHandler {
 		return object.getObjectContent();
 	}
 	
-	public void pushMessageToSQS(String msg, QueueType type) {
+	public void pushMessageToSQS(Message msg, QueueType type) {
 		String queueUrl = sqsURLs.get(type);
-		sqs.sendMessage(new SendMessageRequest(queueUrl, msg));
+		SendMessageRequest r = new SendMessageRequest();
+		r.setQueueUrl(queueUrl);
+		r.setMessageBody(msg.getBody());
+		r.setMessageAttributes(msg.getMessageAttributes());
+		sqs.sendMessage(r);		
+	}
+	
+	public void pushMessagesToSQS(List<Message> messages, QueueType type) {
+		String queueUrl = sqsURLs.get(type);
+		
+		// There is a limitation of 10 messages in a single request
+		List<SendMessageBatchRequestEntry> entries = new ArrayList<SendMessageBatchRequestEntry>();
+		for (int i = 0; i < messages.size(); i++) {
+			Message msg = messages.get(i);		
+			SendMessageBatchRequestEntry e = new SendMessageBatchRequestEntry();
+			e.setMessageAttributes(msg.getMessageAttributes());
+			e.setMessageBody(msg.getBody());
+			e.setId(UUID.randomUUID().toString());
+			entries.add(e);
+			if (i % 10 == 9) {
+				sqs.sendMessageBatch(new SendMessageBatchRequest(queueUrl, entries));
+				entries = new ArrayList<SendMessageBatchRequestEntry>(); 
+			}
+		}				
 	}
 	
 	public Message pullMessageFromSQS(QueueType type) {
@@ -164,6 +192,8 @@ public class AWSHandler {
 	    sqsURLs.put(QueueType.ManagerToLocal, mtl);    
 	    sqsURLs.put(QueueType.LocalToManager, ltm);
 	    sqsURLs.put(QueueType.ManagerToWorker, mtw);
-	    sqsURLs.put(QueueType.WorkerToManager, wtm);	  	  
+	    sqsURLs.put(QueueType.WorkerToManager, wtm);	
+	    
+	    pullMessageFromSQS(QueueType.ManagerToLocal);
 	}
 }
