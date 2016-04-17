@@ -49,15 +49,7 @@ public class Worker {
 	private  boolean 		  isTerminate = false;
 	
 	 
-	public Worker(){	
-		
-		try {
-			workerInit();
-		} catch (IOException e) {
-			System.out.println("::Worker:: got exception " + e.getMessage());
-		}
-		analysisInit();
-		
+	public Worker(){		
 	}
 	
 	private void workerInit() throws FileNotFoundException, IOException{
@@ -69,7 +61,11 @@ public class Worker {
 			workerJobsDone = 0;
 		
 	  //*aws*//
-			//aws = new //AWSHandler(Path, .....);constractor!	
+			try {
+				//aws = new AWSHandler();
+			} catch (Exception e) {
+				System.out.println("*****Worker***** got exception " + e.getMessage());
+			}
 			goodLinks = new ArrayList<>();
 			badLinks  = new ArrayList<>();
 		   
@@ -92,10 +88,11 @@ public class Worker {
 		Message tweetLink = aws.pullMessageFromSQS(QueueType.ManagerToWorker);
         if (tweetLink != null) {
         	Map<String, MessageAttributeValue> LinkMap = tweetLink.getMessageAttributes();
-            if (isTerminateMessage(LinkMap)) {
-                aws.workerTerminate();
+ //           if (isTerminateMessage(LinkMap)) {
+//                aws.workerTerminate();
                // return tweetLink;  ????????????
-            } else if (LinkMap.containsKey("LocalID") && LinkMap.containsKey("URL")) {
+           // } else
+        	if (LinkMap.containsKey("LocalID") && LinkMap.containsKey("URL")) {
             	return tweetLink;
             }       
         }
@@ -110,14 +107,13 @@ public class Worker {
         	Message tweetLink = getTweetLinkFromManager();
             if (tweetLink != null)
             {
-                if (isTerminateMessage(tweetLink))
-                {
-                	isTerminate = true;
-                }
-                else
-                {
+//                if (isTerminateMessage(tweetLink))
+ //               {
+//                	isTerminate = true;
+ //               }
+//                else  {
                     processTweetLink(tweetLink);
-                }
+               // }
             }
         }
     }
@@ -321,8 +317,18 @@ public class Worker {
 		
 		Worker worker = new Worker();
 		
+		try {
+			worker.workerInit();
+			worker.analysisInit();
+		} catch (IOException e) {
+			System.out.println("::Worker:: got exception " + e.getMessage());
+		}
+		
+		
+		System.out.println("*****Worker***** Init sec!");
+		
 		worker.analysis();
 		worker.sendStat();
-		worker.goTerminate();
+		//worker.goTerminate();
 	}
 }
