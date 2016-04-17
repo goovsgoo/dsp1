@@ -1,7 +1,11 @@
 package dsp1_v1;
 
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.Charset;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -16,6 +20,7 @@ import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.profile.ProfileCredentialsProvider;
 import com.amazonaws.regions.Region;
 import com.amazonaws.regions.Regions;
+import com.amazonaws.util.Base64;
 import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.AmazonEC2Client;
 import com.amazonaws.services.ec2.model.DescribeInstanceStatusResult;
@@ -80,7 +85,7 @@ public class AWSHandler {
 		DescribeInstanceStatusResult r = ec2.describeInstanceStatus();
 		int activeWorkers = Math.max(r.getInstanceStatuses().size()-1, 0); // the Manager is also an instance that should be ignored
 		int numWorkersToRun = Math.max(Math.min(numWorkers, MAX_RUNNING_WORKERS) - activeWorkers, 0);
-		List<Instance> workers = runInstances(numWorkersToRun, numWorkersToRun);
+		List<Instance> workers = runInstances(numWorkersToRun, numWorkersToRun,"Worker.jar");
 		List<String> ids = new ArrayList<String>();
 		for (Instance i : workers) {
 			ids.add(i.getInstanceId());
@@ -89,10 +94,10 @@ public class AWSHandler {
 	}
 	
 	public String startManagerNode() {
-		List<Instance> manager = runInstances(1, 1);
+		List<Instance> manager = runInstances(1, 1,"Manager.jar");
 		return manager.get(0).getInstanceId();
 	}
-	
+
 	public void uploadFileToS3(File file, String fileName) {		
 		String bucketName = credentialsID.toLowerCase() + "mybucket";
 		s3.createBucket(bucketName);		
@@ -146,13 +151,47 @@ public class AWSHandler {
 		ec2.terminateInstances(new TerminateInstancesRequest(instanceIDs));
 	}
 	
-	private List<Instance> runInstances(int min, int max) {
+	private List<Instance> runInstances(int min, int max, String jarName) {
 		RunInstancesRequest request = new RunInstancesRequest("ami-08111162", min, max);
-        request.setInstanceType(InstanceType.T2Micro.toString());        
+        request.setInstanceType(InstanceType.T2Micro.toString());   
+        try {
+			request.withSecurityGroups("default").withUserData(getUserData(jarName));
+		} catch (IOException e) {
+			System.out.println("::AWS:: got exception - getUserData " + e.getMessage());
+		}
         List<Instance> instances = ec2.runInstances(request).getReservation().getInstances();        
         System.out.println("Launch instances: " + instances);
         return instances;
 	}
+	
+	private String getUserData(String jarName) throws IOException {
+
+        List<String> lines = Files.readAllLines(Paths.get("/tmp/bin/jar/properties.csv"), Charset.forName("UTF-8"));
+        String accessKey = lines.get(0).substring(12);
+        String secretAccessKey = lines.get(1).substring(12);
+
+        String script = "#!/bin/sh\n"
+                + "BIN_DIR=/tmp\n"
+                + "AWS_ACCESS_KEY_ID=" + accessKey
+                + "\n"
+                + "AWS_SECRET_ACCESS_KEY=" + secretAccessKey
+                + "\n"
+                + "AWS_DEFAULT_REGION = us-east-1\n"
+                + "wget http://www.us.apache.org/dist//commons/io/binaries/commons-io-2.4-bin.zip\n"//check if needed
+                + "unzip commons-io-2.4-bin.zip\n"//check if needed
+                + "cd $BIN_DIR\n"
+                + "mkdir -p $BIN_DIR/bin/jar\n"
+                + "export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_DEFAULT_REGION\n"
+                + "aws s3 cp s3://dspsass1/" + jarName + ".jar $BIN_DIR/bin/jar\n"
+                + "echo accessKey = $AWS_ACCESS_KEY_ID > $BIN_DIR/bin/jar/properties.csv\n"
+                + "echo secretKey = $AWS_SECRET_ACCESS_KEY >> $BIN_DIR//bin/jar/properties.csv\n"
+                + "ls $BIN_DIR/bin/jar/\n"
+                + "cat $BIN_DIR/bin/jar/properties.csv\n"
+                + "java -jar $BIN_DIR/bin/jar/" + jarName + ".jar";
+        String str = new String(Base64.encode(script.getBytes()));
+        return str;
+
+    }
 	
 	private String getSQSName(QueueType type) {
 		return type.toString() + "_" + credentialsID;		

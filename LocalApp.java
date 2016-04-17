@@ -11,7 +11,7 @@ public class LocalApp {
 		AWSHandler handler = new AWSHandler();
 		File file = new File(path);
 		if (file.exists()) {
-			handler.uploadFileToS3(file);
+			handler.uploadFileToS3(file, "Input");
 			handler.pushMessageToSQS("imageLinks.txt", QueueType.LocalToManager);
 			if (!handler.isManagerNodeActive()) {
 				handler.startManagerNode();

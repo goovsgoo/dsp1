@@ -1,7 +1,6 @@
 package dsp1_v1;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Properties;
 import java.util.Date;
 import java.util.ArrayList;
@@ -170,7 +169,8 @@ public class Worker {
     {
     	Message messageToSend = new Message();
     	messageToSend.setBody(htmlTag);
-    	messageToSend.addMessageAttributesEntry("workerID", new MessageAttributeValue().withDataType("String").withStringValue(workerId));
+    	String taskId = message.getMessageAttributes().get("taskId").getStringValue();
+    	messageToSend.addMessageAttributesEntry("workerID", new MessageAttributeValue().withDataType("String").withStringValue(taskId));
         aws.pushMessageToSQS(messageToSend, QueueType.WorkerToManager);
         System.out.println("*****Worker***** send to manager: " + htmlTag);
         aws.deleteMessageFromSQS(message, QueueType.ManagerToWorker);
