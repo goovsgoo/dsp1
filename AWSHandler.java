@@ -49,18 +49,33 @@ public class AWSHandler {
 		ManagerToLocal
 	}
 	
-	public AWSHandler() throws Exception {
-		sqsURLs = new HashMap<QueueType, String>();		
-		init();				
+	public AWSHandler() {
+		sqsURLs = new HashMap<QueueType, String>();
+		try {
+			init();
+		}
+		catch (Exception e) {
+			e.printStackTrace();
+		}
 	}
 
 	public boolean isManagerNodeActive() {
-		DescribeInstanceStatusResult r = ec2.describeInstanceStatus();
+		DescribeInstanceStatusResult r = ec2.describeInstanceStatus();		
 		return r.getInstanceStatuses().size() > 0;
 	}
 	
+	/**
+	 * starts worker instances in EC2. Number of workers to be run is calculated as such:
+	 * if the number of active workers >= numWorkers -> don't run workers
+	 * if the number of active workers < numWorkers -> run (numWorkers - number of active workers) workers
+	 * @param numWorkers number of necessary workers for a job
+	 * @return list of instance Ids
+	 */
 	public List<String> startWorkers(int numWorkers) {
-		List<Instance> workers = runInstances(numWorkers, numWorkers);
+		DescribeInstanceStatusResult r = ec2.describeInstanceStatus();
+		int activeWorkers = r.getInstanceStatuses().size()-1; // the Manager is also an instance that should be ignored
+		int numWorkersToRun = Math.max(numWorkers - activeWorkers, 0);
+		List<Instance> workers = runInstances(numWorkersToRun, numWorkersToRun);
 		List<String> ids = new ArrayList<String>();
 		for (Instance i : workers) {
 			ids.add(i.getInstanceId());
@@ -73,8 +88,7 @@ public class AWSHandler {
 		return manager.get(0).getInstanceId();
 	}
 	
-	public void uploadFileToS3(File file) {
-		String fileName = file.getName().replace("\\", "_").replace("/", "_").replace(":", "_");
+	public void uploadFileToS3(File file, String fileName) {		
 		String bucketName = credentialsID.toLowerCase() + "mybucket";
 		s3.createBucket(bucketName);		
 		s3.putObject(new PutObjectRequest(bucketName, fileName, file));
@@ -92,8 +106,8 @@ public class AWSHandler {
 	}
 	
 	public Message pullMessageFromSQS(QueueType type) {
-		System.out.println("*****AWS***** got " + type);
-		return sqs.receiveMessage(sqsURLs.get(type)).getMessages().get(0);
+		List<Message> messages = sqs.receiveMessage(sqsURLs.get(type)).getMessages();		
+		return messages.size() > 0 ? messages.get(0) : null;
 	}
 	
 	public void deleteMessageFromSQS(Message message, QueueType type) {
@@ -150,6 +164,6 @@ public class AWSHandler {
 	    sqsURLs.put(QueueType.ManagerToLocal, mtl);    
 	    sqsURLs.put(QueueType.LocalToManager, ltm);
 	    sqsURLs.put(QueueType.ManagerToWorker, mtw);
-	    sqsURLs.put(QueueType.WorkerToManager, wtm);	
+	    sqsURLs.put(QueueType.WorkerToManager, wtm);	  	  
 	}
 }
