@@ -87,13 +87,12 @@ public class Worker {
     {
 		Message message = aws.pullMessageFromSQS(QueueType.ManagerToWorker);
         if (message != null) {
-        	Map<String, MessageAttributeValue> LinkMap = message.getMessageAttributes();
-            if (LinkMap.containsKey("Terminate")) { 
+            if (message.getBody().equals("terminate")) { 
             	isTerminate = true;
             	System.out.println("*****Worker***** got Terminate Msg");
             }     
         }
-        return null;						
+        return message;						
     }
 	
 		
@@ -107,6 +106,7 @@ public class Worker {
                 if (!isTerminate){
                     processTweetLink(tweetLink);
                 } else {
+                	sendAnsToManager( tweetLink, "","terminate");
                 	break;
                 }
             }
@@ -168,7 +168,10 @@ public class Worker {
     
     private void sendAnsToManager(Message message, String url,String htmlTag)
     {
-        aws.pushMessageToSQS(htmlTag, QueueType.WorkerToManager);
+    	Message messageToSend = new Message();
+    	messageToSend.setBody(htmlTag);
+    	messageToSend.addMessageAttributesEntry("workerID", new MessageAttributeValue().withDataType("String").withStringValue(workerId));
+        aws.pushMessageToSQS(messageToSend, QueueType.WorkerToManager);
         System.out.println("*****Worker***** send to manager: " + htmlTag);
         aws.deleteMessageFromSQS(message, QueueType.ManagerToWorker);
     }
