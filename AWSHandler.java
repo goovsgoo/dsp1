@@ -73,6 +73,7 @@ public class AWSHandler {
 		}
 	}
 
+	// TODO: check with tag
 	public boolean isManagerNodeActive() {
 		DescribeInstanceStatusResult r = ec2.describeInstanceStatus();		
 		return r.getInstanceStatuses().size() > 0;
@@ -87,13 +88,13 @@ public class AWSHandler {
 	 */
 	public List<String> startWorkers(int numWorkers) {		
 		
-		// Calculate workers (instances) to be started
+		// Calculate how many workers (instances) to be started
 		DescribeInstanceStatusResult r = ec2.describeInstanceStatus();
 		int activeWorkers = Math.max(r.getInstanceStatuses().size()-1, 0); // the Manager is also an instance that should be ignored
 		int numWorkersToRun = Math.max(Math.min(numWorkers, MAX_RUNNING_WORKERS) - activeWorkers, 0);
 		
 		// run instances
-		List<Instance> workers = runInstances(numWorkersToRun, numWorkersToRun,"Worker.jar");
+		List<Instance> workers = runInstances(numWorkersToRun, numWorkersToRun,"dsp1_v1.jar");
 		
 		// return Ids
 		List<String> ids = new ArrayList<String>();
@@ -175,27 +176,26 @@ public class AWSHandler {
 		} catch (IOException e) {
 			System.out.println("::AWS:: got exception - getUserData " + e.getMessage());
 		}
+        System.out.println("Launching " + max + " instances...");
         List<Instance> instances = ec2.runInstances(request).getReservation().getInstances();        
-        System.out.println("Launch instances: " + instances);
+        System.out.println("Launched instances: " + instances);
         return instances;
 	}
 	
 	private String getUserData(String jarName) throws IOException {
-        String script = "#!/bin/dsp1_v1\n"  
-        		+ "set -x -e\n"
-        		+ "echo yo bitch"
-                + "BIN_DIR=/bin/dsp1_v1\n"
+        String script = "#!/bin/bash\n"  
+        		+ "set -e -x\n"
+        		+ "echo yo bitch\n"
+                + "BIN_DIR=/tmp\n"
+                + "cd $BIN_DIR\n"
                 + "wget https://s3.amazonaws.com/akiai3bmpkxyzm2gf4gamybucket/rootkey.zip\n"
         		+ "unzip -P awsswa rootkey.zip\n"                
-                + "AWS_DEFAULT_REGION = us-east-1\n"
-        		+ "wget https://s3.amazonaws.com/akiai3bmpkxyzm2gf4gamybucket/dsp1_v1.jar\n"
-                + "wget http://www.us.apache.org/dist//commons/io/binaries/commons-io-2.4-bin.zip\n"//check if needed
-                + "cd $BIN_DIR\n"
-                + "mkdir -p $BIN_DIR/bin/jar\n"
-                + "export AWS_DEFAULT_REGION\n"
-                + "ls $BIN_DIR/bin/jar/\n"
-                + "cat $BIN_DIR/bin/jar/properties.csv\n"
-                + "java -jar $BIN_DIR/bin/jar/" + jarName + ".jar";
+        		+ "wget https://s3.amazonaws.com/akiai3bmpkxyzm2gf4gamybucket/dsp1_v1_lib.zip\n"
+        		+ "unzip dsp1_v1_lib.zip\n"           		
+        		+ "wget http://repo1.maven.org/maven2/edu/stanford/nlp/stanford-corenlp/3.3.0/stanford-corenlp-3.3.0-models.jar\n"
+        		+ "mv stanford-corenlp-3.3.0-models.jar dsp1_v1_lib\n"
+        		+ "wget https://s3.amazonaws.com/akiai3bmpkxyzm2gf4gamybucket/dsp1_v1.jar\n" 
+                + "java -jar $BIN_DIR/" + jarName;
         String str = new String(Base64.encode(script.getBytes()));
         return str;
 

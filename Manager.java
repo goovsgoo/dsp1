@@ -160,7 +160,7 @@ public class Manager {
 		manager.addHtmlTagMessageToFile("1", message);*/
 		
 		while (!manager.isTerminate) {
-            //manager.pullMessageAndDeliverTask();
+            manager.pullMessageAndDeliverTask();
         }
         manager.terminateManager();		
 	} 

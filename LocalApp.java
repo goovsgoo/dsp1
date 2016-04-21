@@ -33,6 +33,7 @@ public class LocalApp {
 	 * @param args
 	 */
 	public static void main(String[] args) {
+		System.out.println("Running LocalApp args: " + args[0] + " " + args[1] + " " + args[2]);
 		String inputFilePath = args[0];
 		String outputFilePath = args[1];
 		String tweetsPerWorker = args[2];
