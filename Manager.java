@@ -73,7 +73,7 @@ public class Manager {
 			receivedResultsNum.put(taskID, ++num);
 			
 			if (expectedResultsNum.get(taskID).intValue() == num) {
-				reduce(taskID);
+				//reduce(taskID);
 				aws.uploadFileToS3(file, taskID);
 			}
 		}
