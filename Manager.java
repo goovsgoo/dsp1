@@ -40,6 +40,8 @@ public class Manager {
 	        } 
 	        else {
 	        	
+	        	System.out.println("::MANAGER:: found a task to do");
+	        	
 	        	// Distribute the task to tweets and put them in SQS
 	        	String fileNameInS3 = message.getBody();
 	        	String taskID = "task_" + UUID.randomUUID().toString();
