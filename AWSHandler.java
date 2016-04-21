@@ -1,6 +1,7 @@
 package dsp1_v1;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.Charset;
@@ -17,6 +18,7 @@ import org.jsoup.helper.DescendableLinkedList;
 
 import com.amazonaws.AmazonClientException;
 import com.amazonaws.auth.AWSCredentials;
+import com.amazonaws.auth.PropertiesCredentials;
 import com.amazonaws.auth.profile.ProfileCredentialsProvider;
 import com.amazonaws.regions.Region;
 import com.amazonaws.regions.Regions;
@@ -50,7 +52,9 @@ public class AWSHandler {
 	private AmazonS3 s3;
 	private String credentialsID;
 	private Map<QueueType, String> sqsURLs;
+	
 	private final int MAX_RUNNING_WORKERS = 19; // AWS allows 20 instances total, and 1 of them is the Manager.
+	private final String ROOT_KEY_PATH = "./rootkey.csv";
 	
 	public enum QueueType {
 		WorkerToManager,
@@ -82,10 +86,16 @@ public class AWSHandler {
 	 * @return list of instance Ids
 	 */
 	public List<String> startWorkers(int numWorkers) {		
+		
+		// Calculate workers (instances) to be started
 		DescribeInstanceStatusResult r = ec2.describeInstanceStatus();
 		int activeWorkers = Math.max(r.getInstanceStatuses().size()-1, 0); // the Manager is also an instance that should be ignored
 		int numWorkersToRun = Math.max(Math.min(numWorkers, MAX_RUNNING_WORKERS) - activeWorkers, 0);
+		
+		// run instances
 		List<Instance> workers = runInstances(numWorkersToRun, numWorkersToRun,"Worker.jar");
+		
+		// return Ids
 		List<String> ids = new ArrayList<String>();
 		for (Instance i : workers) {
 			ids.add(i.getInstanceId());
@@ -94,7 +104,7 @@ public class AWSHandler {
 	}
 	
 	public String startManagerNode() {
-		List<Instance> manager = runInstances(1, 1,"Manager.jar");
+		List<Instance> manager = runInstances(1, 1,"dsp1_v1.jar");
 		return manager.get(0).getInstanceId();
 	}
 
@@ -139,7 +149,11 @@ public class AWSHandler {
 	}
 	
 	public Message pullMessageFromSQS(QueueType type) {
-		List<Message> messages = sqs.receiveMessage(sqsURLs.get(type)).getMessages();		
+		ReceiveMessageRequest r = new ReceiveMessageRequest(sqsURLs.get(type));
+		List<String> l = new ArrayList<String>();
+		l.add("All");
+		r.setMessageAttributeNames(l);		
+		List<Message> messages = sqs.receiveMessage(r).getMessages();		
 		return messages.size() > 0 ? messages.get(0) : null;
 	}
 	
@@ -152,10 +166,12 @@ public class AWSHandler {
 	}
 	
 	private List<Instance> runInstances(int min, int max, String jarName) {
-		RunInstancesRequest request = new RunInstancesRequest("ami-08111162", min, max);
-        request.setInstanceType(InstanceType.T2Micro.toString());   
+		RunInstancesRequest request = new RunInstancesRequest("ami-08111162", min, max);       
         try {
-			request.withSecurityGroups("default").withUserData(getUserData(jarName));
+			request.withSecurityGroups("default")
+				.withUserData(getUserData(jarName))
+				.withKeyName("home")
+				.withInstanceType(InstanceType.T2Micro.toString());
 		} catch (IOException e) {
 			System.out.println("::AWS:: got exception - getUserData " + e.getMessage());
 		}
@@ -165,26 +181,18 @@ public class AWSHandler {
 	}
 	
 	private String getUserData(String jarName) throws IOException {
-
-        List<String> lines = Files.readAllLines(Paths.get("/tmp/bin/jar/properties.csv"), Charset.forName("UTF-8"));
-        String accessKey = lines.get(0).substring(12);
-        String secretAccessKey = lines.get(1).substring(12);
-
-        String script = "#!/bin/sh\n"
-                + "BIN_DIR=/tmp\n"
-                + "AWS_ACCESS_KEY_ID=" + accessKey
-                + "\n"
-                + "AWS_SECRET_ACCESS_KEY=" + secretAccessKey
-                + "\n"
+        String script = "#!/bin/dsp1_v1\n"  
+        		+ "set -x -e\n"
+        		+ "echo yo bitch"
+                + "BIN_DIR=/bin/dsp1_v1\n"
+                + "wget https://s3.amazonaws.com/akiai3bmpkxyzm2gf4gamybucket/rootkey.zip\n"
+        		+ "unzip -P awsswa rootkey.zip\n"                
                 + "AWS_DEFAULT_REGION = us-east-1\n"
+        		+ "wget https://s3.amazonaws.com/akiai3bmpkxyzm2gf4gamybucket/dsp1_v1.jar\n"
                 + "wget http://www.us.apache.org/dist//commons/io/binaries/commons-io-2.4-bin.zip\n"//check if needed
-                + "unzip commons-io-2.4-bin.zip\n"//check if needed
                 + "cd $BIN_DIR\n"
                 + "mkdir -p $BIN_DIR/bin/jar\n"
-                + "export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_DEFAULT_REGION\n"
-                + "aws s3 cp s3://dspsass1/" + jarName + ".jar $BIN_DIR/bin/jar\n"
-                + "echo accessKey = $AWS_ACCESS_KEY_ID > $BIN_DIR/bin/jar/properties.csv\n"
-                + "echo secretKey = $AWS_SECRET_ACCESS_KEY >> $BIN_DIR//bin/jar/properties.csv\n"
+                + "export AWS_DEFAULT_REGION\n"
                 + "ls $BIN_DIR/bin/jar/\n"
                 + "cat $BIN_DIR/bin/jar/properties.csv\n"
                 + "java -jar $BIN_DIR/bin/jar/" + jarName + ".jar";
@@ -203,10 +211,13 @@ public class AWSHandler {
 	     * credential profile by reading from the credentials file located at
 	     * (C:\\Users\\Or\\.aws\\credentials).
 	     */
- 	    AWSCredentials credentials = null;
+ 	    AWSCredentials credentials = null; 	   
 	    try {
-	        credentials = new ProfileCredentialsProvider("default").getCredentials();
+	    	System.out.println("Loading credentials...");
+	    	credentials = new PropertiesCredentials(new File(ROOT_KEY_PATH));	    	
+	        //credentials = new ProfileCredentialsProvider("default").getCredentials();
 	        credentialsID = credentials.getAWSAccessKeyId();
+	        System.out.println("Credentials Loaded. Key: " + credentialsID);
 	    } catch (Exception e) {
 	        throw new AmazonClientException(
 	                "Cannot load the credentials from the credential profiles file. " +
@@ -233,6 +244,6 @@ public class AWSHandler {
 	    sqsURLs.put(QueueType.ManagerToWorker, mtw);
 	    sqsURLs.put(QueueType.WorkerToManager, wtm);	
 	    
-	    pullMessageFromSQS(QueueType.ManagerToLocal);
+	    //pullMessageFromSQS(QueueType.ManagerToLocal);
 	}
 }
