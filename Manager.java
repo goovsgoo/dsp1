@@ -1,9 +1,13 @@
 package dsp1_v1;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileWriter;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -64,13 +68,44 @@ public class Manager {
 		
 		while ((message = aws.pullMessageFromSQS(QueueType.WorkerToManager)) != null) {
 			String taskID = message.getMessageAttributes().get("taskID").getStringValue();
+			File file = addHtmlTagMessageToFile(taskID,message);
 			int num = receivedResultsNum.get(taskID).intValue();
 			receivedResultsNum.put(taskID, ++num);
+			
 			if (expectedResultsNum.get(taskID).intValue() == num) {
 				reduce(taskID);
+				aws.uploadFileToS3(file, taskID);
 			}
 		}
 	}
+	
+	/**
+	 * create or open file that contain all the HTML Tweet from the same local
+	 * @param String taskID , message with HTML tag
+	 * @return file with the massage inside
+	 */
+	private File addHtmlTagMessageToFile(String taskID , Message message)
+    {	
+		File file = new File ("reduce_" + taskID + ".txt");
+		FileWriter fileWriter;
+		PrintWriter writer;
+        try
+        {
+        	fileWriter = new FileWriter(file, true);	//append write mode
+        	writer = new PrintWriter(fileWriter); 
+            
+            writer.println(message.getBody());
+            
+            writer.close();
+            return file;
+        }
+        catch (Exception e)
+        {
+            System.out.println("::Manager:: HTML Tweet file FAILED : "+e.getMessage());
+        }
+        return null;
+    }
+	
 	
 	private void reduce(String taskID) {
 		
@@ -117,8 +152,15 @@ public class Manager {
 	 
 	public static void main(String[] args) {		
 		Manager manager = new Manager();
+		
+		/*Message message = new Message();
+    	message.setBody("line 1");
+		manager.addHtmlTagMessageToFile("1", message);
+		message.setBody("line 2");
+		manager.addHtmlTagMessageToFile("1", message);*/
+		
 		while (!manager.isTerminate) {
-            manager.pullMessageAndDeliverTask();
+            //manager.pullMessageAndDeliverTask();
         }
         manager.terminateManager();		
 	} 
