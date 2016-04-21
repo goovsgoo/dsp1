@@ -169,7 +169,7 @@ public class Worker {
     {
     	Message messageToSend = new Message();
     	messageToSend.setBody(htmlTag);
-    	String taskId = message.getMessageAttributes().get("taskId").getStringValue();
+    	String taskId = message.getMessageAttributes().get("taskID").getStringValue();
     	messageToSend.addMessageAttributesEntry("taskId", new MessageAttributeValue().withDataType("String").withStringValue(taskId));
         aws.pushMessageToSQS(messageToSend, QueueType.WorkerToManager);
         System.out.println("*****Worker***** send to manager: " + htmlTag);

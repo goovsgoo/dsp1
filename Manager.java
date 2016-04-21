@@ -71,7 +71,7 @@ public class Manager {
 			receivedResultsNum.put(taskID, ++num);
 			
 			if (expectedResultsNum.get(taskID).intValue() == num) {
-				reduce(taskID);
+				//reduce(taskID);
 				aws.uploadFileToS3(file, taskID);
 			}
 		}
@@ -159,6 +159,7 @@ public class Manager {
 		
 		while (!manager.isTerminate) {
             //manager.pullMessageAndDeliverTask();
+            manager.checkIfTaskFinished();
         }
         manager.terminateManager();		
 	} 
