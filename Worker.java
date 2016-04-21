@@ -170,7 +170,7 @@ public class Worker {
     	Message messageToSend = new Message();
     	messageToSend.setBody(htmlTag);
     	String taskId = message.getMessageAttributes().get("taskId").getStringValue();
-    	messageToSend.addMessageAttributesEntry("workerID", new MessageAttributeValue().withDataType("String").withStringValue(taskId));
+    	messageToSend.addMessageAttributesEntry("taskId", new MessageAttributeValue().withDataType("String").withStringValue(taskId));
         aws.pushMessageToSQS(messageToSend, QueueType.WorkerToManager);
         System.out.println("*****Worker***** send to manager: " + htmlTag);
         aws.deleteMessageFromSQS(message, QueueType.ManagerToWorker);
