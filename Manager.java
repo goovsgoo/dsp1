@@ -1,20 +1,19 @@
 package dsp1_v1;
 
-import java.io.BufferedReader;
+
 import java.io.File;
 import java.io.FileWriter;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.PrintWriter;
-import java.util.ArrayList;
-import java.util.Date;
+
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import com.amazonaws.services.sqs.model.Message;
-import com.amazonaws.services.sqs.model.MessageAttributeValue;
+
 
 import dsp1_v1.AWSHandler.QueueType;
 
@@ -24,13 +23,15 @@ public class Manager {
 	private  boolean isTerminate = false; 
 	private int tweetsPerWorker;
 	private Map<String, Integer> expectedResultsNum = new HashMap<String, Integer>();	
+	private ExecutorService requestExequtor;
 	
 	public Manager() {
 		aws = new AWSHandler();
+		requestExequtor = Executors.newFixedThreadPool(10);
 	}
 	
-	private void pullMessageAndDeliverTask() {
-		 System.out.println("::MANAGER:: Get file from local");
+	private void pullMessageAndDeliverTaskNewThread() {
+		 //System.out.println("::MANAGER:: Try to get file from local");
 
 	        Message message = aws.pullMessageFromSQS(QueueType.LocalToManager);
 	        if(message == null){
@@ -43,40 +44,42 @@ public class Manager {
 	            return;
 	        } 
 	        else {
-	        	
 	        	System.out.println("::MANAGER:: found a task to do");
 	        	
-	        	// Distribute the task to tweets and put them in SQS
-	        	String fileNameInS3 = message.getBody();
-	        	String taskID = "task_" + UUID.randomUUID().toString();
-	        	int numTweets = distributeWork(taskID, aws.downloadFileFromS3(fileNameInS3));
-	        	expectedResultsNum.put(taskID, numTweets);
-	        		        
-	        	// Delete the task from SQS
-	        	aws.deleteMessageFromSQS(message, QueueType.LocalToManager);
-	        	
-	        	// Initiate workers to do the task
-	        	tweetsPerWorker = Integer.parseInt(message.getMessageAttributes().get("tweetsPerWorker").getStringValue());
-	        	int numWorkers = (int)Math.ceil(numTweets/(double)tweetsPerWorker);
-	        	aws.startWorkers(numWorkers);
+	        	DeliverTask deliverTask = new DeliverTask(message ,aws , expectedResultsNum , tweetsPerWorker);
+	    		try {
+	    			//expectedResultsNum =  (Map<String, Integer>) requestExequtor.submit(deliverTask);  /// Or solve this pls!!
+	    			 Future<Object> future = requestExequtor.submit(deliverTask);
+	    			 expectedResultsNum = (Map<String, Integer>) future.get();
+	    			System.out.println("::MANAGER:: Thread DeliverTask start!");
+	    		} 
+	    		catch (Exception e) {
+	    			System.out.println("::MANAGER::  Thread DeliverTask FAILED error: " + e.getMessage());
+	    		}
 	        }
 	}
-
-	private void checkIfTaskFinished() {
+	/**
+	 * function for "main" or "run" - loop and ck and sum for new msg from the workers. when all task received reduce and upload to S3
+	 * @param
+	 * @return
+	 */
+	private void checkIfTaskFinished() {				//reduce(taskID);				//reduce(taskID);
 		Message message = null;			
-		Map<String, Integer> receivedResultsNum = new HashMap<String, Integer>();
+		//Map<String, Integer> receivedResultsNum = new HashMap<String, Integer>();
 		
-		while ((message = aws.pullMessageFromSQS(QueueType.WorkerToManager)) != null) {
+		if ((message = aws.pullMessageFromSQS(QueueType.WorkerToManager)) != null) {
+			System.out.println("::Manager:: message: " + message.getBody());
 			String taskID = message.getMessageAttributes().get("taskID").getStringValue();
 			File file = addHtmlTagMessageToFile(taskID,message);
-			int num = receivedResultsNum.get(taskID).intValue();
-			receivedResultsNum.put(taskID, ++num);
+			expectedResultsNum.put(taskID, expectedResultsNum.get(taskID).intValue()-1);
+			aws.deleteMessageFromSQS(message, QueueType.WorkerToManager);
 			
-			if (expectedResultsNum.get(taskID).intValue() == num) {
-				//reduce(taskID);
+			if (expectedResultsNum.get(taskID).intValue() == 0) {
+				System.out.println("::Manager:: upload reduce file To S3 taskID: " + taskID);
 				aws.uploadFileToS3(file, taskID);
 			}
 		}
+		//System.out.println("::Manager:: Queue WorkerToManager is empty");
 	}
 	
 	/**
@@ -107,62 +110,30 @@ public class Manager {
     }
 	
 	
-	private void reduce(String taskID) {
-		
-	}
-	
-	/**
-	 * push every tweet in the file to SQS, and returns the number of workers necessary for that job
-	 * @param tweetsFile file input streem of tweets from S3
-	 * @return number of tweets
-	 */
-	private int distributeWork(String taskID, InputStream tweetsFile) {	
-		try {				
-	        BufferedReader reader = new BufferedReader(new InputStreamReader(tweetsFile));	        
-	        String line;
-	        List<Message> messages = new ArrayList<Message>();
-	        int countTweets = 0;
-	        while ((line = reader.readLine()) != null) {
-	        	++countTweets;
-	        	Message msg = new Message();
-	        	msg.setBody(line);	        	
-	        	MessageAttributeValue attr = new MessageAttributeValue()
-	        		.withDataType("String")
-	        		.withStringValue(taskID);
-	        	msg.addMessageAttributesEntry("taskID", attr);
-	        	messages.add(msg);	        	
-	        }		        
-	        aws.pushMessagesToSQS(messages, QueueType.ManagerToWorker);	        
-	        return countTweets;
-		}
-		catch (Exception ex) {
-			System.out.println(ex.getMessage());
-			return 0;
-		}
-	}
 	
 	private boolean isTerminateMessage(Message msg) {
 		return msg.getBody().equals("terminate");
 	}
 	
 	 private void terminateManager() {
-		// TODO Auto-generated method stub
-		
+		 System.out.println("::MANAGER:: termination of manager");
+	        requestExequtor.shutdown();  //wait for all job to finish
+	        try {
+	            requestExequtor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
+	        } catch (Exception e) {
+	            System.out.println("*****MANAGER*****  Waiting threads finish FAILED error: " + e.getMessage());
+	        }
+	     // TODO Auto-generated method stub
 	}
 	 
 	public static void main(String[] args) {		
-		Manager manager = new Manager();
-		
-		/*Message message = new Message();
-    	message.setBody("line 1");
-		manager.addHtmlTagMessageToFile("1", message);
-		message.setBody("line 2");
-		manager.addHtmlTagMessageToFile("1", message);*/
-		
+		Manager manager = new Manager();		
+
 		while (!manager.isTerminate) {
-            //manager.pullMessageAndDeliverTask();
-            manager.checkIfTaskFinished();
+            manager.pullMessageAndDeliverTaskNewThread();
+			manager.checkIfTaskFinished();
         }
         manager.terminateManager();		
-	} 
+	}
+
 }

@@ -160,7 +160,8 @@ public class Worker {
             workerJobsDone++;
             finishTime = System.currentTimeMillis();
             workerWorkTime += finishTime - startTime;
-            sendAnsToManager( tweetLink, url, "Failed");
+            //sendAnsToManager( tweetLink, url, "Failed");
+            aws.deleteMessageFromSQS(tweetLink, QueueType.ManagerToWorker);
         }
     }
 	
