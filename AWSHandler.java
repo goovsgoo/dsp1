@@ -94,7 +94,7 @@ public class AWSHandler {
 		int numWorkersToRun = Math.max(Math.min(numWorkers, MAX_RUNNING_WORKERS) - activeWorkers, 0);
 		
 		// run instances
-		List<Instance> workers = runInstances(numWorkersToRun, numWorkersToRun,"dsp1_v1.jar");
+		List<Instance> workers = runInstances(numWorkersToRun, numWorkersToRun,"Worker.jar");
 		
 		// return Ids
 		List<String> ids = new ArrayList<String>();
@@ -105,7 +105,7 @@ public class AWSHandler {
 	}
 	
 	public String startManagerNode() {
-		List<Instance> manager = runInstances(1, 1,"dsp1_v1.jar");
+		List<Instance> manager = runInstances(1, 1,"Manager.jar");
 		return manager.get(0).getInstanceId();
 	}
 
@@ -130,7 +130,7 @@ public class AWSHandler {
 		sqs.sendMessage(r);		
 	}
 	
-	public void pushMessagesToSQS(List<Message> messages, QueueType type) {
+	public synchronized void pushMessagesToSQS(List<Message> messages, QueueType type) {
 		String queueUrl = sqsURLs.get(type);
 		
 		// There is a limitation of 10 messages in a single request
@@ -172,7 +172,7 @@ public class AWSHandler {
 			request.withSecurityGroups("default")
 				.withUserData(getUserData(jarName))
 				.withKeyName("home")
-				.withInstanceType(InstanceType.T2Micro.toString());
+				.withInstanceType(InstanceType.T2Small.toString());
 		} catch (IOException e) {
 			System.out.println("::AWS:: got exception - getUserData " + e.getMessage());
 		}
@@ -194,8 +194,8 @@ public class AWSHandler {
         		+ "unzip dsp1_v1_lib.zip\n"           		
         		+ "wget http://repo1.maven.org/maven2/edu/stanford/nlp/stanford-corenlp/3.3.0/stanford-corenlp-3.3.0-models.jar\n"
         		+ "mv stanford-corenlp-3.3.0-models.jar dsp1_v1_lib\n"
-        		+ "wget https://s3.amazonaws.com/akiai3bmpkxyzm2gf4gamybucket/dsp1_v1.jar\n" 
-                + "java -jar $BIN_DIR/" + jarName;
+        		+ "wget https://s3.amazonaws.com/akiai3bmpkxyzm2gf4gamybucket/" + jarName + "\n" 
+                + "java -jar -Xms768m -Xmx1024m $BIN_DIR/" + jarName;
         String str = new String(Base64.encode(script.getBytes()));
         return str;
 
@@ -206,11 +206,6 @@ public class AWSHandler {
 	}
 	
 	private void init() throws Exception {
-	    /*
-	     * The ProfileCredentialsProvider will return your [default]
-	     * credential profile by reading from the credentials file located at
-	     * (C:\\Users\\Or\\.aws\\credentials).
-	     */
  	    AWSCredentials credentials = null; 	   
 	    try {
 	    	System.out.println("Loading credentials...");

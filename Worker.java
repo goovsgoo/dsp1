@@ -71,11 +71,13 @@ public class Worker {
 	
 	private void analysisInit() {
  
+		System.out.println("Initating Sentiment NLP...");
 	      //*Sentiment Analysis*//
 	      		Properties propsSentiment = new Properties();
 	      		propsSentiment.put("annotators", "tokenize, ssplit, parse, sentiment");
 	      		sentimentPipeline =  new StanfordCoreNLP(propsSentiment);
 	      		
+	      System.out.println("Initating Recognition NLP...");
 	      //*Named Entity Recognition*//
 	      		Properties propsRecognition = new Properties();
 	      		propsRecognition.put("annotators", "tokenize , ssplit, pos, lemma, ner");
