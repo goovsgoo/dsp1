@@ -3,8 +3,10 @@ package dsp1_v1;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.PrintWriter;
+import java.util.List;
 import java.util.Map;
 import com.amazonaws.services.sqs.model.Message;
+import com.amazonaws.services.sqs.model.MessageAttributeValue;
 
 import dsp1_v1.AWSHandler.QueueType;
 
@@ -12,11 +14,13 @@ public class ExecuteFindAndReduce implements Runnable {
 
 	private AWSHandler aws;
 	private Map<String, Integer> expectedResultsNum;
+	private Manager manager;
 	
-	public ExecuteFindAndReduce(AWSHandler aws, Map<String, Integer> expectedResultsNum) {
+	public ExecuteFindAndReduce(AWSHandler aws, Manager manager) {
 		this.aws = aws;
-		this.expectedResultsNum = expectedResultsNum;
-	}
+		this.expectedResultsNum = manager.getExpectedResultsNum();
+		this.manager = manager;
+	}	
 	
 	/**
 	 * Loop and check for new messages from the Worker.
@@ -24,27 +28,35 @@ public class ExecuteFindAndReduce implements Runnable {
 	 * When all messages of a task were received - put the html file in SQS ManagerToLocal
 	 */
 	@Override
-	public void run() {
-		Message message = null;
-		// TODO: get expectedResultsNum from S3 (in case Manager was down and re-established
-		while (true) {
-			if ((message = aws.pullMessageFromSQS(QueueType.WorkerToManager)) != null) {
-				String messageBody = message.getBody();
-				System.out.println("::Manager:: message: " + messageBody);
-				String taskID = message.getMessageAttributes().get("taskID").getStringValue();
-				File htmlFile = openOrCreateHtmlFile(taskID);
-				if (!messageBody.equals("Failed")) {
-					addHtmlLineToFile(htmlFile, messageBody);
-				}
-				int expectedNum = getFromMap(taskID);
-				aws.deleteMessageFromSQS(message, QueueType.WorkerToManager);
-				if (expectedNum != -1) { // case Manager was down and re-established again
-					putInMap(taskID, expectedNum-1);										
-					if (getFromMap(taskID) == 0) {
-						System.out.println("::Manager:: upload reduce file To S3 taskID: " + taskID);
-						addHtmlLineToFile(htmlFile, "</body>");
-						addHtmlLineToFile(htmlFile, "</html>");
-						aws.uploadFileToS3(htmlFile, taskID);
+	public void run() {		
+		// TODO: get expectedResultsNum from S3 (in case Manager was down and re-established)
+		while (!manager.getIsTerminated()) {
+			List<Message> messages = aws.pullMessagesFromSQS(QueueType.WorkerToManager);
+			if (messages != null) {
+				for (Message message : messages) {
+					String messageBody = message.getBody();
+					System.out.println("::Manager:: message: " + messageBody);
+					String taskID = message.getMessageAttributes().get("taskID").getStringValue();
+					File htmlFile = openOrCreateHtmlFile(taskID);
+					if (!messageBody.equals("Failed")) {
+						addHtmlLineToFile(htmlFile, messageBody);
+					}
+					int expectedNum = getFromMap(taskID);
+					aws.deleteMessageFromSQS(message, QueueType.WorkerToManager);
+					if (expectedNum != -1) { // case Manager was down and re-established again
+						putInMap(taskID, expectedNum-1);										
+						if (getFromMap(taskID) == 0) {
+							System.out.println("::Manager:: upload reduce file To S3 taskID: " + taskID);
+							addHtmlLineToFile(htmlFile, "</body>");
+							addHtmlLineToFile(htmlFile, "</html>");
+							aws.uploadFileToS3(htmlFile, taskID + "_result.html");	
+							Message results = new Message()
+								.withBody(taskID + "_result.html")
+								.addMessageAttributesEntry("taskID", new MessageAttributeValue()
+									.withStringValue(taskID)
+									.withDataType("String"));
+							aws.pushMessageToSQS(results, QueueType.ManagerToLocal);							
+						}
 					}
 				}
 			}			

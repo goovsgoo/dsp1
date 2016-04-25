@@ -1,32 +1,27 @@
 package dsp1_v1;
 
+import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.Charset;
-import java.nio.file.Files;
-import java.nio.file.Paths;
+import java.io.InputStreamReader;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.UUID;
-
-import org.jsoup.helper.DescendableLinkedList;
 
 import com.amazonaws.AmazonClientException;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.PropertiesCredentials;
-import com.amazonaws.auth.profile.ProfileCredentialsProvider;
 import com.amazonaws.regions.Region;
 import com.amazonaws.regions.Regions;
 import com.amazonaws.util.Base64;
 import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.AmazonEC2Client;
 import com.amazonaws.services.ec2.model.DescribeInstanceStatusResult;
-import com.amazonaws.services.ec2.model.DescribeInstancesResult;
 import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.ec2.model.InstanceType;
 import com.amazonaws.services.ec2.model.RunInstancesRequest;
@@ -115,6 +110,11 @@ public class AWSHandler {
 		s3.putObject(new PutObjectRequest(bucketName, fileName, file));
 	}
 	
+	public void deleteFromS3(String fileName) {
+		String bucketName = credentialsID.toLowerCase() + "mybucket";
+		s3.deleteObject(bucketName, fileName);
+	}
+	
 	public InputStream downloadFileFromS3(String key) {
 		String bucketName = credentialsID.toLowerCase() + "mybucket";
 		S3Object object = s3.getObject(new GetObjectRequest(bucketName, key));
@@ -130,7 +130,7 @@ public class AWSHandler {
 		sqs.sendMessage(r);		
 	}
 	
-	public synchronized void pushMessagesToSQS(List<Message> messages, QueueType type) {
+	public void pushMessagesToSQS(List<Message> messages, QueueType type) {
 		String queueUrl = sqsURLs.get(type);
 		
 		// There is a limitation of 10 messages in a single request
@@ -150,12 +150,26 @@ public class AWSHandler {
 	}
 	
 	public Message pullMessageFromSQS(QueueType type) {
+		List<Message> messages =  pullMessagesFromSQS(type);		
+		return messages != null ? messages.get(0) : null;
+	}
+
+	public void turnMessageVisible(Message message, QueueType type) {		
+	    sqs.changeMessageVisibility(sqsURLs.get(type), message.getReceiptHandle(), 1);	    
+	}
+	
+	public List<Message> pullMessagesFromSQS(QueueType type) {
 		ReceiveMessageRequest r = new ReceiveMessageRequest(sqsURLs.get(type));
 		List<String> l = new ArrayList<String>();
 		l.add("All");
 		r.setMessageAttributeNames(l);		
 		List<Message> messages = sqs.receiveMessage(r).getMessages();		
-		return messages.size() > 0 ? messages.get(0) : null;
+		return messages.size() > 0 ? messages : null;
+	}
+	
+	public boolean isSQSEmpty(QueueType type) {
+
+		return false;
 	}
 	
 	public void deleteMessageFromSQS(Message message, QueueType type) {
@@ -164,6 +178,15 @@ public class AWSHandler {
 	
 	public void terminateInstances(List<String> instanceIDs){
 		ec2.terminateInstances(new TerminateInstancesRequest(instanceIDs));
+	}
+	
+	public void terminateSelf() {		
+		String selfId = getSelfInstanceID();
+		if (selfId != "") {
+			List<String> l = new ArrayList<String>();
+			l.add(selfId);
+			ec2.terminateInstances(new TerminateInstancesRequest(l));	
+		}		
 	}
 	
 	private List<Instance> runInstances(int min, int max, String jarName) {
@@ -184,8 +207,6 @@ public class AWSHandler {
 	
 	private String getUserData(String jarName) throws IOException {
         String script = "#!/bin/bash\n"  
-        		+ "set -e -x\n"
-        		+ "echo yo bitch\n"
                 + "BIN_DIR=/tmp\n"
                 + "cd $BIN_DIR\n"
                 + "wget https://s3.amazonaws.com/akiai3bmpkxyzm2gf4gamybucket/rootkey.zip\n"
@@ -203,6 +224,23 @@ public class AWSHandler {
 	
 	private String getSQSName(QueueType type) {
 		return type.toString() + "_" + credentialsID;		
+	}
+	
+	private String getSelfInstanceID() {
+		URL metaurl = null;
+		
+		try {
+			metaurl = new URL("http://169.254.169.254/latest/meta-data/instance-id");			
+			BufferedReader br = new BufferedReader(new InputStreamReader(metaurl.openStream()));
+			String line = null;			
+			while ((line = br.readLine()) != null) {
+				return line;
+			}
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return "";
 	}
 	
 	private void init() throws Exception {
@@ -237,8 +275,6 @@ public class AWSHandler {
 	    sqsURLs.put(QueueType.ManagerToLocal, mtl);    
 	    sqsURLs.put(QueueType.LocalToManager, ltm);
 	    sqsURLs.put(QueueType.ManagerToWorker, mtw);
-	    sqsURLs.put(QueueType.WorkerToManager, wtm);	
-	    
-	    //pullMessageFromSQS(QueueType.ManagerToLocal);
+	    sqsURLs.put(QueueType.WorkerToManager, wtm);		    	    
 	}
 }

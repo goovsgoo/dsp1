@@ -6,7 +6,6 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 import dsp1_v1.AWSHandler.QueueType;
 import com.amazonaws.services.sqs.model.Message;
@@ -28,7 +27,7 @@ public class ExecuteTask implements Runnable {
 
     	// Distribute the task to tweets and put them in SQS
     	String fileNameInS3 = message.getBody();
-    	String taskID = "task_" + UUID.randomUUID().toString();
+    	String taskID = message.getMessageAttributes().get("taskID").getStringValue();
     	List<Message> messagesToSend = createMessagesToSend(taskID, aws.downloadFileFromS3(fileNameInS3));
     	int numTweets = messagesToSend.size();
     	putInMap(taskID, numTweets);
@@ -45,7 +44,7 @@ public class ExecuteTask implements Runnable {
 	} 
 	
 	/**
-	 * A synchronized function to put <key, value> to expectedResultsNum map
+	 * A synchronized function to put (key, value) to expectedResultsNum map
 	 * @param key
 	 * @param value
 	 */
@@ -54,7 +53,7 @@ public class ExecuteTask implements Runnable {
 	}
 	
 	/**
-	 * Creates and returns a list of messages to push to SQS
+	 * Creates and returns a list of messages of tweets from the input stream
 	 * @param tweetsFile file input stream of tweets from S3
 	 * @return List of messages
 	 */

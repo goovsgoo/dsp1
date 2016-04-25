@@ -107,7 +107,7 @@ public class Worker {
                 if (!isTerminate){
                     processTweetLink(tweetLink);
                 } else {
-                	sendAnsToManager( tweetLink, "","terminate");
+                	//sendAnsToManager( tweetLink, "","terminated");                	
                 	break;
                 }
             }
@@ -162,7 +162,7 @@ public class Worker {
             workerJobsDone++;
             finishTime = System.currentTimeMillis();
             workerWorkTime += finishTime - startTime;
-            //sendAnsToManager( tweetLink, url, "Failed");
+            sendAnsToManager( tweetLink, url, "Failed");
             aws.deleteMessageFromSQS(tweetLink, QueueType.ManagerToWorker);
         }
     }
@@ -263,6 +263,10 @@ public class Worker {
         }
     }
 
+	private void terminate() {
+		aws.terminateSelf();
+	}
+	
     private File createStatFile()
     {
     	workerFinishTime = new Date(System.currentTimeMillis());
@@ -328,6 +332,10 @@ public class Worker {
 		System.out.println("*****Worker***** analysis sec!");
 		
 		worker.sendStat();
+		
+		System.out.println("*****Worker***** sent stats " + worker.workerId);
+		
+		worker.terminate();
 		System.out.println("*****Worker***** Goodbye " + worker.workerId);
 	}
 }

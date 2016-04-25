@@ -1,4 +1,4 @@
-/********************************/
+﻿/********************************/
 README!
 /********************************/
 
@@ -45,7 +45,7 @@ Local:
 2. Uploads input file to s3.
 3. Checks if manager exists and has "running" or "pending" state. If it is not, is starts manager instance.
 4. Sends a message to the manager: Input file name , Local ID  and "n" number.
-5. downloads summary file from s3 and creates HTML file named ___________.html
+5. downloads summary file from s3 and creates HTML file named <output_file>
 7. If terminate message was send, it sends Terminate message to the manager.
 
 Manager:
@@ -53,8 +53,7 @@ Manager:
 3. Receives messages from Local -> Manager queue until it receives "Terminate" message.
 4. Parses the message
 5. Runs new thread for each job request from Local.
-6. If manager receives termination message:
-	* Waits until all the threads terminated.
+6. If manager receives termination message:	
 	* Receives all messages from locals that arrived after termination message and sends them "Terminated"
 	  message and deletes Local -> Manager queue.
 	* Sends termination message to Manager -> Worker queue.
@@ -76,7 +75,7 @@ Each thread in manager: ????????????????????????????????????????????
 Worker:
 1. Receives message from Manager -> Worker queue.
 2. If the message is termination message, it creates statistic file and uploads it to s3 
-    and send "Terminated" message to Worker -> Manager queue.
+    and send "terminate" message to Worker -> Manager queue.
    
 ##########################################################
     
@@ -91,3 +90,7 @@ to do:
     how much time it took your program to finish working on the given tweetLinks.txt, and what was the n you used.
 4. Think of more possible issues that might arise from failures. What did you do to solve it? 
     What about broken communications? Be sure to handle all fail-cases!
+5. delete queues, delete relevant S3
+6. change the statistics name
+7. config message timeout for queues
+8. unsafe thread

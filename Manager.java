@@ -1,7 +1,9 @@
 package dsp1_v1;
 
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -22,6 +24,14 @@ public class Manager {
 	public Manager() {
 		aws = new AWSHandler();
 		requestExecutor = Executors.newFixedThreadPool(10);
+	}
+	
+	public boolean getIsTerminated() {
+		return isTerminate;
+	}
+	
+	public Map<String, Integer> getExpectedResultsNum() {
+		return expectedResultsNum;
 	}
 	
 	private Message pullMessage() {
@@ -56,7 +66,7 @@ public class Manager {
 	 * In that case, envelop the responses in HTML file and sends back to the Local
 	 */
 	private void toggleCheckIfTaskFinished() {
-		ExecuteFindAndReduce executor = new ExecuteFindAndReduce(aws, expectedResultsNum);
+		ExecuteFindAndReduce executor = new ExecuteFindAndReduce(aws, this);
 		requestExecutor.execute(executor);
 	}
 	
@@ -65,13 +75,31 @@ public class Manager {
 	}
 	
 	 private void terminateManager() {
-		 System.out.println("::MANAGER:: termination of manager");
-	        requestExecutor.shutdown(); //wait for all job to finish
-	        try {
-	            requestExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
-	        } catch (Exception e) {
-	            System.out.println("*****MANAGER*****  Waiting threads finish FAILED error: " + e.getMessage());
-	        }
+	 	System.out.println("::MANAGER:: termination of manager");        
+        try {
+        	Message m;
+        	while ((m = aws.pullMessageFromSQS(QueueType.ManagerToWorker)) != null) {
+        		aws.turnMessageVisible(m, QueueType.ManagerToWorker);
+        		Thread.sleep(5000);
+        	}        	
+        	
+        	// Send all workers termination messages
+        	List<Message> terminationMSGs = new ArrayList<Message>();        	
+        	for (int i=0; i < 20; i++) {        		
+        		terminationMSGs.add(new Message().withBody("terminate"));
+        	}
+        	aws.pushMessagesToSQS(terminationMSGs, QueueType.ManagerToWorker);
+        	
+        	Thread.sleep(5000);
+               	
+            requestExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
+            requestExecutor.shutdown(); //wait for all job to finish
+            
+            aws.terminateSelf();
+            
+        } catch (Exception e) {
+            System.out.println("*****MANAGER*****  Waiting threads finish FAILED error: " + e.getMessage());
+        }
 	}
 	 
 	public static void main(String[] args) {		
