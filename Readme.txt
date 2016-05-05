@@ -7,86 +7,99 @@ DSP 162 assignment_1
 Or Koren 201031226
 Yoed Grizim 301675443
 
-5.5.16
+5/5/2016
 
 ###############################################
 
 The purpose of this mission was to experiment with AWS.
-In this assignment we wrote an application that take list of tweeters and classifies and tags them.
-After will display the result on a HTML page.
+In this assignment we wrote an application that take list of tweets and classifies and tags them.
+The results returned as an HTML page.
 
 Setup:
-1. Make sure that Manager.jar and Worker.jar dsp1_v1_lib.zip and rootkey.zip files uploaded to s3 
-    to bucket named "akiai3bmpkxyzm2gf4gamybucket".  
-2. You have two ways to run the program:
-  a. java -jar LocalApp.jar inputfile outputfile n
-  b. java -jar LocalApp.jar inputfile outputfile n terminate
-  If you want to terminate manager at the end of work, you should use the second option.
-3. The program was tested to work with the version: aws-java-sdk-1.10.69.jar
+0. Download all files from the submission page to a folder
+1. Put a rootkey.csv file near LocalApp.jar. The rootkey.csv has to be in the following format:
+	accessKey=<key>
+	secretKey=<secret key>
+2. Compress the csv to file name rootkey.zip with password: <Or's password>
+2. Create a bucket with a name: <credentials key lowercase>mybucket. e.g: akiai3bmpkxyzm2gf4gamybucket
+3. Upload to that bucket the files:
+	Manager.jar
+	Worker.jar
+	dsp1_v1_lib.zip
+	rootkey.zip - your root key locked with password
+4. Unzip dsp1_v1_lib.zip
+5. Run the program via one of the two options:
+  	a. java -jar LocalApp.jar inputfile outputfile n
+  	b. java -jar LocalApp.jar inputfile outputfile n terminate
    
-When:
-<inputfile> - path of input
-<outputfile> - path of output HTML
-<n> - <workers/urls>
-[terminate] - optional command to fully terminate the system.
+	When:
+	<inputfile> - path of input
+	<outputfile> - path of output HTML
+	<n> - <workers/urls>
+	[terminate] - Optional: command to fully terminate the system.
 
 Example:
 java -jar LocalApp.jar input.txt output.html 10 terminate
 
 ##########################################################
-   
+AWS info and simulation time results
+
+AMI: ami-08111162
+Type: t2-small
+Simulation: 320 tweets, 40 tweets per worker (8 workers)
+Times:	
+	Including establishing the nodes : 5 min
+    	Not including: 23 second      	
+
+##########################################################   
 Local:
-1. Looks for 2 queues: Local -> Manager and Manager -> Local.
-2. Uploads input file to s3.
-3. Checks if manager exists and has "running" or "pending" state. If it is not, is starts manager instance.
-4. Sends a message to the manager: Input file name , Local ID  and "n" number.
-5. downloads summary file from s3 and creates HTML file named <outputfile>
-7. If terminate message was send, it sends Terminate message to the manager.
+
+1. Uploads input file to s3.
+2. Puts a message in SQS queue Local -> Manager, regarding file name in S3, Task ID and "n" number.
+3. Checks if manager exists and has "running" state. If not, starts manager instance.
+4. Waits for a message to receive in SQS queue Manager->Local. Once recevied:
+	4.1 If the message has the different Task ID as generated in this local -> return it back and wait 5 sec.
+	4.2 Otherwise, proceed to 5
+5. Downloads the HTML file from S3 and save it as <outputfile>
+6. If should terminate, it sends 'terminate' message to the manager.
 
 Manager:
-1. Looks for 4 queues: Local -> Manager and Manager -> Local and  Worker -> Manager and Manager -> Worker.
-3. Receives messages from Local -> Manager queue until it receives "Terminate" message.
-4. Parses the message.
-5. Runs new thread for each job request from Local.
-6. If manager receives termination message:	
-	* Receives all messages from locals that remained and deletes Local -> Manager queue.
-	* Sends termination message to Manager -> Worker queue.
-	* Waits until there are no more workers(number of instances is 1).
-	* Deletes Worker -> Manager and Manager -> Worker queues.
-	* Terminates workers
-	* Deletes Manager -> Local queue
-	* Terminates itself
 
-Each thread in manager: 
-1. main: wait for tasks from the local. when recived deliver task to thread ExecuteTask.
-2. ExecuteTask: downloads the task from S3, distbrutes its to tweets, push the tweets to the workers.
-3. ExecuteFindAndReduce: waits for Msgs from the workers, unifies them, by task, to an HTML page. when all msges of a task recived uploads the HTML to S3.
+2. Open a new thread that goes to 10 (Find and reduce responses from the workers).
+3. Wait for a message to receive from SQS queue Local->Manager.
+	3.1 If the message is 'terminate' go to 5
+	3.2 Otherwise, open a new thread that goes to 4
+	3.3 go to 3 
+4. (Thread 'ExecuteTask') Downloads the input file from S3
+	4.1 Splits the the file to string of tweets, and send each to the Manager->Worker queue.
+	4.2 Thread dies	
+5. Wait until the Manager->Worker queue is empty
+6. Send termination messages to all workers. Wait here until all workers are dead.
+7. Sutdown all threads
+8. Deletes all SQS queues, and S3 tmp directory
+9. ** terminate **
+
+10. (Thread 'ExecuteFindAndReduce') If manager is not terminating:
+	10.1 Pull as many messages as possible from Worker->Manager queue. For each message:
+	10.2 If messsage body is not "Failed" append the message into HTML file
+	10.3 Delete the message from SQS
+	10.4 If the message was that last of its task:
+		10.4.1 Close the HTML with proper tags
+		10.4.2 Upload the HTML to S3
+		10.4.3 Sends a message to local
+	10.5 Go to 10
 
 Worker:
+
 1. Receives message from Manager -> Worker queue.
 2. If the message is termination message, it creates statistic file and uploads it to s3.
 
-Extreme cases that were not handled:
-1. When an Worker send an answer to Manager and falls before wiped out the massge from the relevant queue,
-then another Worker take this tweet again and a double row is added to the output.
-2. When opened several LocalApps At the same time they may open multi managers instants,
-   becuse Menger can still not runing then there is no recognition that has been Menger and the localapp start new Menger.
-3. When manager application ck if there is enough workers it inconsiderate worker that not runing.
+Cases that will fail and were not handled:
+
+1. If a worker sends an answer to the manager and falls before deleting the message from the queue,
+then another worker will take the same tweet and send the same response to the manager. A double row will be added to the output.
+2. When opened several LocalApps At the same time they may open multi managers instantces,
+   because the manager is still not in 'running' mode. In that case there will be two managers.
+3. When the manager receives two tasks and there are no active workers, the manager will open for every task its number
+   of workers, instead of maximum number of workers bewtween the two.
    
-##########################################################
-    
-TIMES:
-    full end to end : 5 min
-    without init nodes : 23 second
-      Setup- 320 tweets and 40 tweets per worker(8 Workers)
-
-
-Type of instance:
-		ami-08111162
-		T2Small
-		
-##########################################################
-
-Did you think for more than 2 minutes about security?  yes. we zip the rootkey and set password. and send the pass only in the after compiled java file.
-Did you think about scalability? yes. All local apss has a unique identifier and a field that keeps the amount of tweets,
-				 So multiple applications can run concurrently on the same manager and the on the same workers.

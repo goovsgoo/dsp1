@@ -56,7 +56,8 @@ public class Worker {
 			workerInitTime = new Date(System.currentTimeMillis());
 			workerWorkTime = 0;			
 			workerJobsDone = 0;
-		
+			WikidictAnnotator p;
+			
 	  //*aws*//
 			try {
 				aws = new AWSHandler();
@@ -277,7 +278,8 @@ public class Worker {
         {
             writer = new PrintWriter (file);
             writer.println("Worker ID: " + workerId);
-            writer.println("Start time:Finish time = " + workerInitTime + ":" + workerFinishTime);
+            writer.println("Start time: " + workerInitTime);
+            writer.println("Finish time: " + workerFinishTime);
             if (workerJobsDone != 0)
             {
                 workerAverageTime = workerWorkTime / workerJobsDone;
