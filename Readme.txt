@@ -85,4 +85,8 @@ Type of instance:
 		ami-08111162
 		T2Small
 		
+##########################################################
 
+Did you think for more than 2 minutes about security?  yes. we zip the rootkey and set password. and send the pass only in the after compiled java file.
+Did you think about scalability? yes. All local apss has a unique identifier and a field that keeps the amount of tweets,
+				 So multiple applications can run concurrently on the same manager and the on the same workers.
