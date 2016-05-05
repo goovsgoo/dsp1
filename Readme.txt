@@ -7,7 +7,7 @@ DSP 162 assignment_1
 Or Koren 201031226
 Yoed Grizim 301675443
 
-3.5.16
+5.5.16
 
 ###############################################
 
@@ -16,71 +16,69 @@ In this assignment we wrote an application that take list of tweeters and classi
 After will display the result on a HTML page.
 
 Setup:
-1. Make sure that Manager.jar  and Worker.jar dsp1_v1_lib.zip and rootkey.zip files uploaded to s3 
+1. Make sure that Manager.jar and Worker.jar dsp1_v1_lib.zip and rootkey.zip files uploaded to s3 
     to bucket named "akiai3bmpkxyzm2gf4gamybucket".  
 2. You have two ways to run the program:
-  a. java -jar Local.jar inputfile outputfile n
-  b. java -jar Local.jar inputfile outputfile n terminate
+  a. java -jar LocalApp.jar inputfile outputfile n
+  b. java -jar LocalApp.jar inputfile outputfile n terminate
   If you want to terminate manager at the end of work, you should use the second option.
-3. The program was tested to work with the version: aws-java-sdk-___________
+3. The program was tested to work with the version: aws-java-sdk-1.10.69.jar
    
-Start:
-To run the application execute the following command:
-java -jar LocalApp.jar <input_file> <output_file> <n> [terminate]
-
 When:
-<input_file> - path of input images file
-<output_file> - path of output HTML file
-<n> - <workers/urls ratio>
+<inputfile> - path of input
+<outputfile> - path of output HTML
+<n> - <workers/urls>
 [terminate] - optional command to fully terminate the system.
 
 Example:
-java -jar LocalApp.jar aws input.txt output.html 10 terminate
-
+java -jar LocalApp.jar input.txt output.html 10 terminate
 
 ##########################################################
    
 Local:
-1. Looks for 2 que   ues: Local -> Manager and Manager -> Local.
+1. Looks for 2 queues: Local -> Manager and Manager -> Local.
 2. Uploads input file to s3.
 3. Checks if manager exists and has "running" or "pending" state. If it is not, is starts manager instance.
 4. Sends a message to the manager: Input file name , Local ID  and "n" number.
-5. downloads summary file from s3 and creates HTML file named <output_file>
+5. downloads summary file from s3 and creates HTML file named <outputfile>
 7. If terminate message was send, it sends Terminate message to the manager.
 
 Manager:
 1. Looks for 4 queues: Local -> Manager and Manager -> Local and  Worker -> Manager and Manager -> Worker.
 3. Receives messages from Local -> Manager queue until it receives "Terminate" message.
-4. Parses the message
+4. Parses the message.
 5. Runs new thread for each job request from Local.
 6. If manager receives termination message:	
-	* Receives all messages from locals that arrived after termination message and sends them "Terminated"
-	  message and deletes Local -> Manager queue.
+	* Receives all messages from locals that remained and deletes Local -> Manager queue.
 	* Sends termination message to Manager -> Worker queue.
-	* Waits until it received "Terminated" message from each worker.
+	* Waits until there are no more workers(number of instances is 1).
 	* Deletes Worker -> Manager and Manager -> Worker queues.
 	* Terminates workers
 	* Deletes Manager -> Local queue
 	* Terminates itself
 
-Each thread in manager: ????????????????????????????????????????????
-1. Calculates how many workers need to process the amount of URLs in the given input file.???????????????????????????
-2. Checks how many workers already running, starts stopped workers and creates new worker instances if needed. ????????????????????
-3. Sends messages to the workers (Manager -> Worker queue). 
-    The message has the following attributes: LocalApplicationID (to indicate which LocalApplication it belongs to) and the URL.
-4. Receives messages from Worker -> Manager queue and checks LocalApplicationID.  It waits until it receives result from worker for each URL.
-6. Sends a message to Local with following attributes: LocalID, Response (JobDone), NumberOfFailedURLs, NumberOfLines (in input file),  OutputFileName.
-7. If the thread failes for some reason, it will send FAILED message to the LocalApplication. 
+Each thread in manager: 
+1. main: wait for tasks from the local. when recived deliver task to thread ExecuteTask.
+2. ExecuteTask: downloads the task from S3, distbrutes its to tweets, push the tweets to the workers.
+3. ExecuteFindAndReduce: waits for Msgs from the workers, unifies them, by task, to an HTML page. when all msges of a task recived uploads the HTML to S3.
 
 Worker:
 1. Receives message from Manager -> Worker queue.
-2. If the message is termination message, it creates statistic file and uploads it to s3 
-    and send "terminate" message to Worker -> Manager queue.
+2. If the message is termination message, it creates statistic file and uploads it to s3.
+
+Extreme cases that were not handled:
+1. When an Worker send an answer to Manager and falls before wiped out the massge from the relevant queue,
+then another Worker take this tweet again and a double row is added to the output.
+2. When opened several LocalApps At the same time they may open multi managers instants,
+   becuse Menger can still not runing then there is no recognition that has been Menger and the localapp start new Menger.
+3. When manager application ck if there is enough workers it inconsiderate worker that not runing.
    
 ##########################################################
     
 TIMES:
-_______________________
+    full end to end : 5 min
+    without init nodes : 23 second
+      Setup- 320 tweets and 40 tweets per worker(8 Workers)
 
 
 Type of instance:
@@ -88,11 +86,3 @@ Type of instance:
 		T2Small
 		
 
-to do:
-1. You may assume there will not be any race conditions; conditions were 2 local applications are trying to start a manger at the same time etc.
-2. Terminated	
-3. how much time it took your program to finish working on the given tweetLinks.txt, and what was the n you used.
-4. Think of more possible issues that might arise from failures. What did you do to solve it? 
-    What about broken communications? Be sure to handle all fail-cases!
-7. config message timeout for queues
-8. unsafe thread
