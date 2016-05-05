@@ -83,14 +83,16 @@ TIMES:
 _______________________
 
 
+Type of instance:
+		ami-08111162
+		T2Small
+		
+
 to do:
 1. You may assume there will not be any race conditions; conditions were 2 local applications are trying to start a manger at the same time etc.
 2. Terminated	
-3. Your README must also contain what type of instance you used (ami + type:micro/small/large…), 
-    how much time it took your program to finish working on the given tweetLinks.txt, and what was the n you used.
+3. how much time it took your program to finish working on the given tweetLinks.txt, and what was the n you used.
 4. Think of more possible issues that might arise from failures. What did you do to solve it? 
     What about broken communications? Be sure to handle all fail-cases!
-5. delete queues, delete relevant S3
-6. change the statistics name
 7. config message timeout for queues
 8. unsafe thread

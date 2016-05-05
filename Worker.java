@@ -137,9 +137,9 @@ public class Worker {
     	                 break;
     	        case 2:  color = "black";
     	                 break;
-    	        case 3:  color = "light green";
+    	        case 3:  color = "LightGreen";
     	                 break;
-    	        case 4:  color = "dark green";
+    	        case 4:  color = "DarkGreen";
     	                 break;
     		}
 
