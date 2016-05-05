@@ -40,7 +40,10 @@ public class ExecuteTask implements Runnable {
     	int tweetsPerWorker = Integer.parseInt(message.getMessageAttributes().get("tweetsPerWorker").getStringValue());
     	int numWorkers = (int)Math.ceil(numTweets/(double)tweetsPerWorker);    	
     	aws.startWorkers(numWorkers);
-    	    	
+    	
+    	// Delete the task from S3
+    	aws.deleteFromS3(fileNameInS3);
+    	return;
 	} 
 	
 	/**

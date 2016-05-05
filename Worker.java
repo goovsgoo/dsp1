@@ -54,13 +54,13 @@ public class Worker {
 	private void workerInit() throws FileNotFoundException, IOException{
 	  //*for stat*//
 			workerInitTime = new Date(System.currentTimeMillis());
-			workerWorkTime = 0;
-			workerId ="yoed";
+			workerWorkTime = 0;			
 			workerJobsDone = 0;
 		
 	  //*aws*//
 			try {
 				aws = new AWSHandler();
+				workerId = aws.getSelfInstanceID();
 			} catch (Exception e) {
 				System.out.println("*****Worker***** got exception " + e.getMessage());
 			}
@@ -259,7 +259,7 @@ public class Worker {
         File file = createStatFile();
         
         if (file != null){
-        	aws.uploadFileToS3(file, workerId);
+        	aws.uploadFileToS3(file, file.getName());
         }
     }
 

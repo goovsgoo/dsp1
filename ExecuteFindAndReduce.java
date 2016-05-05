@@ -49,7 +49,7 @@ public class ExecuteFindAndReduce implements Runnable {
 							System.out.println("::Manager:: upload reduce file To S3 taskID: " + taskID);
 							addHtmlLineToFile(htmlFile, "</body>");
 							addHtmlLineToFile(htmlFile, "</html>");
-							aws.uploadFileToS3(htmlFile, taskID + "_result.html");	
+							aws.uploadFileToS3(htmlFile, taskID + "_result.html");								
 							Message results = new Message()
 								.withBody(taskID + "_result.html")
 								.addMessageAttributesEntry("taskID", new MessageAttributeValue()

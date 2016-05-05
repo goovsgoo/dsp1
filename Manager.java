@@ -92,9 +92,10 @@ public class Manager {
         	
         	Thread.sleep(5000);
                	
-            requestExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
-            requestExecutor.shutdown(); //wait for all job to finish
+        	requestExecutor.shutdown(); //wait for all job to finish
+            requestExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);            
             
+            aws.cleanSQSandS3();
             aws.terminateSelf();
             
         } catch (Exception e) {

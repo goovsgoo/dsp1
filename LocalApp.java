@@ -26,7 +26,7 @@ public class LocalApp {
 			
 			// Push the task to S3, SQS
 			String taskID = UUID.randomUUID().toString();
-			fileNameInS3 = taskID + "_" + file.getName().replace("\\", "_").replace("/", "_").replace(":", "_");
+			fileNameInS3 = "../" + taskID + "_" + file.getName().replace("\\", "_").replace("/", "_").replace(":", "_");
 			handler.uploadFileToS3(file, fileNameInS3);
 			Message msg = new Message();
 			msg.setBody(fileNameInS3);
@@ -43,17 +43,21 @@ public class LocalApp {
 			boolean resultsRecieved = false;
 			while (!resultsRecieved) {
 				Message results = handler.pullMessageFromSQS(QueueType.ManagerToLocal);
+				
+				// check if the results belongs to this local. 
 				if (results != null && results.getMessageAttributes().get("taskID").getStringValue().equals(taskID)) {
 					resultsRecieved = true;
-					handleResults(taskID, results);
+					InputStream inputStream = handler.downloadFileFromS3(results.getBody());
+					handleResults(inputStream);
+					handler.deleteMessageFromSQS(results, QueueType.ManagerToLocal);
 					if (shouldTerminate) {
 						handler.pushMessageToSQS(new Message().withBody("terminate"), QueueType.LocalToManager);
 					}
 				}
 				else if (results != null) {
-					// push message back to queue
+					handler.turnMessageVisible(results, QueueType.ManagerToLocal); // makes the message visible to other locals
 					try {
-						Thread.sleep(1000);  // give other locals a chance to pull the message
+						Thread.sleep(5000);  // give other locals a chance to pull the message
 					} catch (InterruptedException e) {
 						e.printStackTrace();
 					}
@@ -62,15 +66,18 @@ public class LocalApp {
 		}		
 	}
 
-	private void handleResults(String taskID, Message results) {					
+	/**
+	 * saves the results from the input stream to a file	 * 
+	 * @param results
+	 */
+	private void handleResults(InputStream in) {					
 		try 
-		{
-			InputStream inputStream = handler.downloadFileFromS3(results.getBody());						
+		{								
 			OutputStream outputStream = new FileOutputStream(new File(outputFilePath));
 			int read = 0;
 			byte[] bytes = new byte[1024];
 	
-			while ((read = inputStream.read(bytes)) != -1) {
+			while ((read = in.read(bytes)) != -1) {
 				outputStream.write(bytes, 0, read);
 			}
 		}
@@ -88,7 +95,7 @@ public class LocalApp {
 		String inputFilePath = args[0];
 		String outputFilePath = args[1];
 		String tweetsPerWorker = args[2];
-		boolean shouldTerminate = args[3] != null && args[3].equals("terminate");
+		boolean shouldTerminate = args.length > 3 && args[3].equals("terminate");
 		
 		new LocalApp(inputFilePath, outputFilePath, tweetsPerWorker, shouldTerminate);
 	}
