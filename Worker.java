@@ -259,7 +259,7 @@ public class Worker {
         File file = createStatFile();
         
         if (file != null){
-        	aws.uploadFileToS3(file, file.getName());
+        	aws.uploadFileToS3(file, "Summary/" + file.getName());
         }
     }
 

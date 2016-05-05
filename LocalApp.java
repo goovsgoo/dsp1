@@ -26,7 +26,7 @@ public class LocalApp {
 			
 			// Push the task to S3, SQS
 			String taskID = UUID.randomUUID().toString();
-			fileNameInS3 = "../" + taskID + "_" + file.getName().replace("\\", "_").replace("/", "_").replace(":", "_");
+			fileNameInS3 = "dir/" + taskID + "_" + file.getName().replace("\\", "_").replace("/", "_").replace(":", "_");
 			handler.uploadFileToS3(file, fileNameInS3);
 			Message msg = new Message();
 			msg.setBody(fileNameInS3);
@@ -80,6 +80,7 @@ public class LocalApp {
 			while ((read = in.read(bytes)) != -1) {
 				outputStream.write(bytes, 0, read);
 			}
+			outputStream.close();
 		}
 		catch (IOException exception) {
 			System.out.println(exception.getMessage());

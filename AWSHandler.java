@@ -20,10 +20,15 @@ import com.amazonaws.regions.Regions;
 import com.amazonaws.util.Base64;
 import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.AmazonEC2Client;
+import com.amazonaws.services.ec2.model.CreateTagsRequest;
 import com.amazonaws.services.ec2.model.DescribeInstanceStatusResult;
+import com.amazonaws.services.ec2.model.DescribeInstancesResult;
 import com.amazonaws.services.ec2.model.Instance;
+import com.amazonaws.services.ec2.model.InstanceStatus;
 import com.amazonaws.services.ec2.model.InstanceType;
+import com.amazonaws.services.ec2.model.Reservation;
 import com.amazonaws.services.ec2.model.RunInstancesRequest;
+import com.amazonaws.services.ec2.model.Tag;
 import com.amazonaws.services.ec2.model.TerminateInstancesRequest;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
@@ -52,7 +57,7 @@ public class AWSHandler {
 	
 	private final int MAX_RUNNING_WORKERS = 19; // AWS allows 20 instances total, and 1 of them is the Manager.
 	private final String ROOT_KEY_PATH = "./rootkey.csv";
-	
+	private final String TMP_S3_DIRECTORY_NAME = "dir";
 	public enum QueueType {
 		WorkerToManager,
 		ManagerToWorker,
@@ -72,9 +77,13 @@ public class AWSHandler {
 
 	// TODO: check with tag
 	public boolean isManagerNodeActive() {
+		return getNumRunningInstances() > 0;		
+	}
+	
+	public int getNumRunningInstances() {
 		synchronized (ec2) {
 			DescribeInstanceStatusResult r = ec2.describeInstanceStatus();		
-			return r.getInstanceStatuses().size() > 0;	
+			return r.getInstanceStatuses().size();	
 		}		
 	}
 	
@@ -109,24 +118,30 @@ public class AWSHandler {
 	
 	public String startManagerNode() {
 		List<Instance> manager = runInstances(1, 1,"Manager.jar");
+		synchronized(ec2) {
+			CreateTagsRequest createTagsRequest = new CreateTagsRequest();
+			  createTagsRequest.withResources(manager.get(0).getInstanceId()) //
+			      .withTags(new Tag("Type", "Manager"));
+			  ec2.createTags(createTagsRequest);
+		}
 		return manager.get(0).getInstanceId();
 	}
 
 	public void uploadFileToS3(File file, String fileName) {	
 		synchronized(s3) {				
-			s3.putObject(new PutObjectRequest(bucketName, "dir/" + fileName, file));
+			s3.putObject(new PutObjectRequest(bucketName, fileName, file));
 		}
 	}
 	
 	public void deleteFromS3(String fileName) {
 		synchronized (s3) {			
-			s3.deleteObject(bucketName, "dir/" + fileName);	
+			s3.deleteObject(bucketName, fileName);	
 		}		
 	}
 	
 	public InputStream downloadFileFromS3(String key) {
 		synchronized (s3) {			
-			S3Object object = s3.getObject(new GetObjectRequest(bucketName, "dir/" + key));
+			S3Object object = s3.getObject(new GetObjectRequest(bucketName, key));
 			return object.getObjectContent();	
 		}		
 	}
@@ -160,7 +175,13 @@ public class AWSHandler {
 				}				
 				entries = new ArrayList<SendMessageBatchRequestEntry>(); 
 			}
-		}				
+		}
+		
+		synchronized (sqs) {
+			if (entries.size() > 0) {
+				sqs.sendMessageBatch(new SendMessageBatchRequest(queueUrl, entries));
+			}
+		}	
 	}
 	
 	public Message pullMessageFromSQS(QueueType type) {
@@ -284,7 +305,7 @@ public class AWSHandler {
 		sqs.deleteQueue(sqsURLs.get(QueueType.WorkerToManager));
 		
 		// delete folder 'dir'
-	    for (S3ObjectSummary file : s3.listObjects(bucketName, "dir").getObjectSummaries()){
+	    for (S3ObjectSummary file : s3.listObjects(bucketName, TMP_S3_DIRECTORY_NAME).getObjectSummaries()){
 	        s3.deleteObject(bucketName, file.getKey());
 	      }
 	    
@@ -310,23 +331,35 @@ public class AWSHandler {
 	    Region usEast1 = Region.getRegion(Regions.US_EAST_1);
 	    ec2.setRegion(usEast1);
 	    
-	    s3 = new AmazonS3Client(credentials);
-	    s3.setRegion(usEast1);
-	    this.bucketName = credentialsID.toLowerCase() + "mybucket";
-		s3.createBucket(bucketName);
-		
-	    sqs = new AmazonSQSClient(credentials);
-	    sqs.setRegion(usEast1);	    
-	    Map<String,String> attr = new HashMap<String,String>();
-	    attr.put("ReceiveMessageWaitTimeSeconds", "20");
-	    CreateQueueRequest req = new CreateQueueRequest().withAttributes(attr);
-	    String mtl = sqs.createQueue(req.withQueueName(getSQSName(QueueType.ManagerToLocal))).getQueueUrl();
-	    String ltm = sqs.createQueue(req.withQueueName(getSQSName(QueueType.LocalToManager))).getQueueUrl();
-	    String mtw = sqs.createQueue(req.withQueueName(getSQSName(QueueType.ManagerToWorker))).getQueueUrl();
-	    String wtm = sqs.createQueue(req.withQueueName(getSQSName(QueueType.WorkerToManager))).getQueueUrl();
-	    sqsURLs.put(QueueType.ManagerToLocal, mtl);    
-	    sqsURLs.put(QueueType.LocalToManager, ltm);
-	    sqsURLs.put(QueueType.ManagerToWorker, mtw);
-	    sqsURLs.put(QueueType.WorkerToManager, wtm);		    	   
+	    // Create s3 client and bucket
+	    try {
+		    s3 = new AmazonS3Client(credentials);
+		    s3.setRegion(usEast1);
+		    this.bucketName = credentialsID.toLowerCase() + "mybucket";
+			s3.createBucket(bucketName);
+	    }
+	    catch (Exception ex) {
+	    	System.out.print(ex.getMessage());
+	    }
+	    
+	    // Create SQS client and queues
+	    try {
+		    sqs = new AmazonSQSClient(credentials);
+		    sqs.setRegion(usEast1);	    
+		    Map<String,String> attr = new HashMap<String,String>();
+		    attr.put("ReceiveMessageWaitTimeSeconds", "20");
+		    CreateQueueRequest req = new CreateQueueRequest().withAttributes(attr);
+		    String mtl = sqs.createQueue(req.withQueueName(getSQSName(QueueType.ManagerToLocal))).getQueueUrl();
+		    String ltm = sqs.createQueue(req.withQueueName(getSQSName(QueueType.LocalToManager))).getQueueUrl();
+		    String mtw = sqs.createQueue(req.withQueueName(getSQSName(QueueType.ManagerToWorker))).getQueueUrl();
+		    String wtm = sqs.createQueue(req.withQueueName(getSQSName(QueueType.WorkerToManager))).getQueueUrl();
+		    sqsURLs.put(QueueType.ManagerToLocal, mtl);    
+		    sqsURLs.put(QueueType.LocalToManager, ltm);
+		    sqsURLs.put(QueueType.ManagerToWorker, mtw);
+		    sqsURLs.put(QueueType.WorkerToManager, wtm);
+	    }
+	    catch (Exception ex) {
+	    	System.out.print(ex.getMessage());
+	    }	    
 	}
 }

@@ -74,33 +74,47 @@ public class Manager {
 		return msg.getBody().equals("terminate");
 	}
 	
-	 private void terminateManager() {
+	private void terminateManager() {
 	 	System.out.println("::MANAGER:: termination of manager");        
-        try {
-        	Message m;
-        	while ((m = aws.pullMessageFromSQS(QueueType.ManagerToWorker)) != null) {
-        		aws.turnMessageVisible(m, QueueType.ManagerToWorker);
-        		Thread.sleep(5000);
-        	}        	
-        	
-        	// Send all workers termination messages
-        	List<Message> terminationMSGs = new ArrayList<Message>();        	
-        	for (int i=0; i < 20; i++) {        		
-        		terminationMSGs.add(new Message().withBody("terminate"));
-        	}
-        	aws.pushMessagesToSQS(terminationMSGs, QueueType.ManagerToWorker);
-        	
-        	Thread.sleep(5000);
-               	
-        	requestExecutor.shutdown(); //wait for all job to finish
-            requestExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);            
-            
-            aws.cleanSQSandS3();
-            aws.terminateSelf();
-            
-        } catch (Exception e) {
-            System.out.println("*****MANAGER*****  Waiting threads finish FAILED error: " + e.getMessage());
-        }
+	    try {
+	    	
+	    	// Check that there are no more messages for the workers 
+	    	Message m;
+	    	while ((m = aws.pullMessageFromSQS(QueueType.ManagerToWorker)) != null) {
+	    		aws.turnMessageVisible(m, QueueType.ManagerToWorker);
+	    		Thread.sleep(5000);
+	    	}
+	   
+	    	// While there are still alive workers, send them termination messages
+	    	int num;
+	    	while((num = aws.getNumRunningInstances()) > 1) { // The Manager is also an instance..
+	    		pushTerminationMsgs(num);
+	    		Thread.sleep(5000);
+	    	}
+	           	
+	    	// shutdown all active threads
+	    	requestExecutor.shutdown(); //wait for all job to finish
+	        requestExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);            
+	        
+	        // clean aws stuff
+	        aws.cleanSQSandS3();
+	        aws.terminateSelf();
+	        
+	    } catch (Exception e) {
+	        System.out.println("*****MANAGER*****  Waiting threads finish FAILED error: " + e.getMessage());
+	    }
+	}
+	 
+	/**
+	 * Send workers termination messages
+	 * @param numMessages num messages to send
+	 */
+	private void pushTerminationMsgs(int numMessages) {		    
+    	List<Message> terminationMSGs = new ArrayList<Message>();        
+    	for (int i=0; i < numMessages; i++) {        		
+    		terminationMSGs.add(new Message().withBody("terminate"));
+    	}
+    	aws.pushMessagesToSQS(terminationMSGs, QueueType.ManagerToWorker);
 	}
 	 
 	public static void main(String[] args) {		

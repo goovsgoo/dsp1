@@ -26,9 +26,9 @@ public class ExecuteTask implements Runnable {
 	public void run() {
 
     	// Distribute the task to tweets and put them in SQS
-    	String fileNameInS3 = message.getBody();
+    	String filePathInS3 = message.getBody();
     	String taskID = message.getMessageAttributes().get("taskID").getStringValue();
-    	List<Message> messagesToSend = createMessagesToSend(taskID, aws.downloadFileFromS3(fileNameInS3));
+    	List<Message> messagesToSend = createMessagesToSend(taskID, aws.downloadFileFromS3(filePathInS3));
     	int numTweets = messagesToSend.size();
     	putInMap(taskID, numTweets);
     	aws.pushMessagesToSQS(messagesToSend, QueueType.ManagerToWorker);
@@ -42,7 +42,7 @@ public class ExecuteTask implements Runnable {
     	aws.startWorkers(numWorkers);
     	
     	// Delete the task from S3
-    	aws.deleteFromS3(fileNameInS3);
+    	aws.deleteFromS3(filePathInS3);
     	return;
 	} 
 	
